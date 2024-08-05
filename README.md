@@ -1,6 +1,6 @@
-# Dell R710 Fan Control Script
+# Dell R730 Fan Control Script
 
-> A temperature-based fan speed controller for Dell servers (tested on an R710, should work with most PowerEdges). Supports both local and remote hosts.
+> A temperature-based fan speed controller for Dell servers (tested on an R730, should work with most PowerEdges). Supports both local and remote hosts.
 
 
 - [Requisites](#requisites)
@@ -45,8 +45,8 @@
 Clone the repo and run the installation script as root to configure the system or upgrade the already installed controller:
 
 ```text
-git clone https://github.com/nmaggioni/r710-fan-controller.git
-cd r710-fan-controller
+git clone https://github.com/kuan909608/r730-fan-controller_NVIDIA-GPU.git
+cd r730-fan-controller_NVIDIA-GPU
 sudo ./install.sh [<installation path>]
 ```
 
@@ -106,4 +106,4 @@ This controller can monitor the temperature and change the fan speed of remote h
 
 Major thanks go to [NoLooseEnds's directions](https://github.com/NoLooseEnds/Scripts/tree/master/R710-IPMI-TEMP) for the core commands and [sulaweyo's ruby script](https://github.com/sulaweyo/r710-fan-control) for the idea of automating them.
 
-**Note:** The key difference of this script, other than handling remote hosts, is that it's based on the temperature of the CPUs' cores and not on the ambient temperature sensor on the server's motherboard. The R710 does not expose CPU temperature over IPMI, but other models do; this script should work with them nonetheless.
+**Note:** The key difference of this script, other than handling remote hosts, is that it's based on the temperature of the CPUs' cores and not on the ambient temperature sensor on the server's motherboard. The R730 does not expose CPU temperature over IPMI, but other models do; this script should work with them nonetheless.
