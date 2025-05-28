@@ -14,11 +14,11 @@ fi
 
 echo "*** Installing packaged dependencies..."
 if [ -x "$(command -v apt-get)" ]; then
-	apt-get update
-	apt-get install -y build-essential python3-virtualenv python3-dev libsensors4-dev ipmitool
+    apt-get update
+    apt-get install -y build-essential python3-virtualenv python3-dev libsensors4-dev ipmitool
 elif [ -x "$(command -v dnf)" ]; then
-	dnf groupinstall -y "Development Tools"
-	dnf install -y python3-virtualenv python3-devel lm_sensors-devel ipmitool
+    dnf groupinstall -y "Development Tools"
+    dnf install -y python3-virtualenv python3-devel lm_sensors-devel ipmitool
 fi
 
 echo "*** Creating folder '$TARGETDIR'..."
@@ -46,6 +46,10 @@ if [ -f "$TARGETDIR/fan_control.yaml" ]; then
 fi
 cp fan_control.yaml.example "$TARGETDIR/"
 cp fan_control.py "$TARGETDIR/"
+cp fan_controller.py "$TARGETDIR/"
+cp config_loader.py "$TARGETDIR/"
+cp temp_monitor.py "$TARGETDIR/"
+cp state.py "$TARGETDIR/"
 
 echo "*** Creating, (re)starting and enabling SystemD service..."
 cp fan-control.service /etc/systemd/system/fan-control.service

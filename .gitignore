@@ -162,3 +162,4 @@ pip-selfcheck.json
 keys/*
 !keys/.gitkeep
 fan_control.yaml
+fan_control_config.yaml

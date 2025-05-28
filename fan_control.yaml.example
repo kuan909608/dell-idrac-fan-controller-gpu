@@ -1,31 +1,44 @@
+# fan_control.yaml.example
+# This file is an example configuration for fan control. Please modify according to your needs. Do not use real passwords or IP addresses.
+# All comments are in English for international users.
+
 general:
-  debug: false
-  interval: 60
+  debug: false  # Enable debug mode
+  interval: 60  # Monitoring interval in seconds
+  temperature_control_mode: avg # Choose max or avg, determines fan control basis
+  cpu_temperature_command: 'sensors | grep -E "Core [0-9]+:" | awk ''{print $3}'' | sed ''s/+//;s/°C//'' | paste -sd '';'' -'  # Command to get CPU temperature
+  gpu_temperature_command_nvidia: 'nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits | paste -sd '';'' -'  # Command to get NVIDIA GPU temperature
+  gpu_temperature_command_amd: 'rocm-smi --showtemp | grep -E "Temp" | awk ''{print $2}'' | sed ''s/[^0-9.]//g'' | paste -sd '';'' -'  # Command to get AMD GPU temperature
 
 hosts:
-  - name: MyLocalHost
-    hysteresis: 3
-    temperatures:
-      - 32
-      - 37
-      - 55
-    speeds:
-      - 9
-      - 10
-      - 15
+  - name: ExampleHost1  # Host name
+    fan_control_mode: manual     # Fan control mode, manual or automatic
+    temperatures: [40, 60, 80]  # Temperature thresholds in Celsius
+    speeds: [20, 50, 80]        # Fan speed percentages corresponding to thresholds
+    hysteresis: 5               # Hysteresis value to avoid frequent switching
+    ipmi_credentials:           # IPMI login information
+      host: 192.168.1.100       # IPMI host address
+      username: admin           # IPMI username
+      password: your_password   # IPMI password
+    ssh_credentials:            # SSH login information
+      host: 192.168.1.101       # SSH host address
+      username: admin           # SSH username
+      password: your_password   # SSH password
+      # key_path: /app/keys/id_rsa   # (Optional) SSH private key path, recommended to store in keys/ folder
+    gpu_type: [nvidia, amd]     # Supported GPU types, use array format
+    vms:                        # VM list (if any)
+      - name: ExampleVM1        # VM name
+        ssh_credentials:        # VM SSH login information
+          host: 192.168.1.200
+          username: user
+          password: your_password
+        gpu_type: [nvidia]      # Supported GPU types for VM
 
-  #- name: MyRemoteHost
-  #  remote_temperature_command: ssh myuser@myhost 'sysctl -a | grep -E "cpu\.[0-9]+\.temp" | grep -E -o "[0-9]+\.[0-9]+"' # must return a newline-delimited list of floats
-  #  remote_ipmi_credentials:
-  #    host: some.idrac.domain
-  #    username: idrac-user
-  #    password: idrac-password
-  #  hysteresis: 0
-  #  temperatures:
-  #    - 32
-  #    - 37
-  #    - 55
-  #  speeds:
-  #    - 9
-  #    - 10
-  #    - 15
+  - name: ExampleHost2
+    fan_control_mode: manual
+    temperatures: [35, 55, 75]
+    speeds: [30, 60, 90]
+    hysteresis: 5
+    gpu_type: [nvidia]          # Only supports NVIDIA
+
+# Add more hosts as needed following the above format
