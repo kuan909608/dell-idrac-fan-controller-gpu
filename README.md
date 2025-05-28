@@ -104,28 +104,40 @@ The configuration file contains two main sections: `general` and `hosts`.
 
 #### `general` section
 
-| Key                              | Description                                                                                       |
-| -------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `debug`                          | Toggle debug mode (print ipmitool commands instead of executing them, enable additional logging). |
-| `interval`                       | How often (in seconds) to read the CPUs' and GPUs' temperatures and adjust the fans' speeds.      |
-| `cpu_temperature_command`        | Shell command to get CPU temperatures (semicolon separated).                                      |
-| `gpu_temperature_command_nvidia` | Shell command to get NVIDIA GPU temperatures (semicolon separated).                               |
-| `gpu_temperature_command_amd`    | Shell command to get AMD GPU temperatures (semicolon separated).                                  |
+| Key                              | Description                                                                                            |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `debug`                          | Toggle debug mode (print ipmitool commands instead of executing them, enable additional logging).      |
+| `interval`                       | How often (in seconds) to read the CPUs' and GPUs' temperatures and adjust the fans' speeds.           |
+| `temperature_control_mode`       | (Optional) Use `max` or `avg` to decide if fan control is based on the maximum or average temperature. |
+| `cpu_temperature_command`        | Shell command to get CPU temperatures (semicolon separated).                                           |
+| `gpu_temperature_command_nvidia` | Shell command to get NVIDIA GPU temperatures (semicolon separated).                                    |
+| `gpu_temperature_command_amd`    | Shell command to get AMD GPU temperatures (semicolon separated).                                       |
 
 #### `hosts` section
 
 Each host object supports the following keys:
 
-| Key                | Description                                                                         |
-| ------------------ | ----------------------------------------------------------------------------------- |
-| `name`             | Host name identifier.                                                               |
-| `temperatures`     | List of three upper bounds (in °C) for temperature thresholds.                      |
-| `speeds`           | List of three speeds (in %) for each threshold.                                     |
-| `hysteresis`       | (Optional) Hysteresis value in °C to prevent rapid fan speed changes.               |
-| `ipmi_credentials` | (Optional) IPMI login info for this host.                                           |
-| `ssh_credentials`  | (Optional) SSH login info for this host.                                            |
-| `gpu_type`         | (Optional) GPU type, e.g., `nvidia` or `amd`.                                       |
-| `vms`              | (Optional) List of VM objects, each with `name`, `ssh_credentials`, and `gpu_type`. |
+| Key                | Description                                                                                                                           |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`             | Host name identifier.                                                                                                                 |
+| `fan_control_mode` | (Optional) Fan control mode, `manual` or `automatic`.                                                                                 |
+| `temperatures`     | List of three upper bounds (in °C) for temperature thresholds.                                                                        |
+| `speeds`           | List of three speeds (in %) for each threshold.                                                                                       |
+| `hysteresis`       | (Optional) Hysteresis value in °C to prevent rapid fan speed changes.                                                                 |
+| `ipmi_credentials` | (Optional) IPMI login info for this host.                                                                                             |
+| `ssh_credentials`  | (Optional) SSH login info for this host. Supports `host`, `username`, `password`, and optional `key_path` for SSH key authentication. |
+| `gpu_type`         | (Optional) Supported GPU types, can be a string (e.g., `nvidia`) or an array (e.g., `[nvidia, amd]`).                                 |
+| `vms`              | (Optional) List of VM objects. See below for VM object structure.                                                                     |
+
+##### `vms` objects
+
+Each VM object supports the following keys:
+
+| Key               | Description                                                                                                             |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `name`            | VM name identifier.                                                                                                     |
+| `ssh_credentials` | SSH login info for the VM. Supports `host`, `username`, `password`, and optional `key_path` for SSH key authentication. |
+| `gpu_type`        | (Optional) Supported GPU types for the VM, can be a string (e.g., `nvidia`) or an array (e.g., `[nvidia, amd]`).        |
 
 #### Example
 
@@ -157,13 +169,21 @@ hosts:
           host: 192.168.134.98
           username: user
           password: password
-        gpu_type: nvidia
+        gpu_type: [nvidia]
   - name: host2
     temperatures: [35, 55, 75]
     speeds: [30, 60, 90]
     hysteresis: 5
     gpu_type: nvidia
 ```
+
+#### Additional Notes
+
+- `temperature_control_mode` (in `general`): Set to `max` to use the highest temperature for fan control, or `avg` to use the average.
+- `fan_control_mode` (in each host): Set to `manual` for script-controlled fan speed, or `automatic` to let hardware manage it.
+- `gpu_type`: Can be a string or an array, e.g., `nvidia` or `[nvidia, amd]`.
+- `ssh_credentials.key_path`: (Optional) Path to SSH private key for authentication.
+- VM objects under `vms` also support `gpu_type` as an array.
 
 ### Multi-host and VM Support
 
