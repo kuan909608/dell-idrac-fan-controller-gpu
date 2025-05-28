@@ -203,12 +203,14 @@ hosts:
 
 Every `general`.`interval` seconds the controller will fetch the temperatures of all the available CPU cores, average them and round the result (referred to as _Tavg_ below). It will then follow this logic to set the fans' speed percentage or engage automatic (hardware managed) control.
 
+Fan speed is determined by each temperature threshold and its corresponding speed. The number of thresholds/speeds can be any matching pair count.
+
 | Condition                        | Fan speed                                         |
 | -------------------------------- | ------------------------------------------------- |
-| _Tavg_ ≤ Threshold1              | Threshold1                                        |
-| Threshold1 < _Tavg_ ≤ Threshold2 | Threshold2                                        |
-| Threshold2 < _Tavg_ ≤ Threshold3 | Threshold3                                        |
-| _Tavg_ > Threshold3              | Highest configured speed (last value in `speeds`) |
+| _Tavg_ ≤ Threshold1              | Speed1                                            |
+| Threshold1 < _Tavg_ ≤ Threshold2 | Speed2                                            |
+| ...                              | ...                                               |
+| _Tavg_ > ThresholdN              | Highest configured speed (last value in `speeds`) |
 
 If `hysteresis` is set for a given host, the controller will wait for the temperature to go below _ThresholdN - hysteresis_ temperature. For example: with a Threshold2 of 37°C and an hysteresis of 3°C, the fans won't slow down from Threshold3 to Threshold2 speed until the temperature reaches 34°C.
 
