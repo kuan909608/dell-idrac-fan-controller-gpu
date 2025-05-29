@@ -67,7 +67,7 @@ To deploy remote fan management with Docker (`fan_control` running on a separate
 git clone https://github.com/kuan909608/dell-idrac-fan-controller-gpu.git
 cd dell-idrac-fan-controller-gpu
 docker build -t fan_control .
-docker run -d --restart=always --name fan_control -v "./fan_control.yaml:/app/fan_control.yaml:ro" -v "./keys:/app/keys:ro" fan_control
+docker run -d --restart=always --name fan_control -v "./fan_control_config.yaml:/app/fan_control_config.yaml:ro" -v "./keys:/app/keys:ro" fan_control
 ```
 
 Running this tool under a proper orchestrator is advised.

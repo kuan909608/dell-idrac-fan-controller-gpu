@@ -68,7 +68,7 @@ sudo ./install.sh [<安裝路徑>]
 git clone https://github.com/kuan909608/dell-idrac-fan-controller-gpu.git
 cd dell-idrac-fan-controller-gpu
 docker build -t fan_control .
-docker run -d --restart=always --name fan_control -v "./fan_control.yaml:/app/fan_control.yaml:ro" -v "./keys:/app/keys:ro" fan_control
+docker run -d --restart=always --name fan_control -v "./fan_control_config.yaml:/app/fan_control_config.yaml:ro" -v "./keys:/app/keys:ro" fan_control
 ```
 
 建議於正式環境搭配 Orchestrator 使用。
