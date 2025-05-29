@@ -54,8 +54,10 @@ def ssh_exec_command(
         except Exception:
             pass
 
-
 def run_command(host_dict, command, logger=log, log_tag=None, debug: bool = False):
+    if debug:
+        log("DEBUG", log_tag, f"Command for {log_tag}: {command}")
+
     ssh_creds = host_dict.get('ssh_credentials')
     if ssh_creds:
         return ssh_exec_command(
@@ -83,3 +85,15 @@ def run_command(host_dict, command, logger=log, log_tag=None, debug: bool = Fals
             if logger:
                 logger("ERROR", log_tag, f"Local command failed: {e}")
             return None, str(e)
+
+def auto_split_thresholds(temp_min, temp_max, speed_min, speed_max, hysteresis):
+    thresholds = []
+    speeds = []
+    n = max(1, round((float(temp_max) - float(temp_min)) / (float(hysteresis) * 2)))
+    for i in range(n + 1):
+        t = float(temp_min) + (float(temp_max) - float(temp_min)) * i / n
+        thresholds.append(round(t, 2))
+    for i in range(len(thresholds)):
+        s = speed_min + (speed_max - speed_min) * (i / (len(thresholds) - 1)) if len(thresholds) > 1 else speed_max
+        speeds.append(round(s))
+    return thresholds, speeds

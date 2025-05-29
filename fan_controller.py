@@ -6,32 +6,33 @@ class FanController:
     def __init__(self, config):
         self.config = config
 
-    def check_hysteresis(self, temp_average: float, threshold_n: int, host: dict) -> bool:
-        hysteresis = host['hysteresis']
-        temperature_threshold = host['temperatures'][threshold_n]
-        
-        return temperature_threshold - hysteresis <= temp_average <= temperature_threshold + hysteresis
+    def check_hysteresis(self, temp: float, threshold_temp: float, hysteresis: float) -> bool:
+        return threshold_temp - hysteresis <= temp <= threshold_temp + hysteresis
 
     def compute_fan_speed_level(self, temp: float, host: dict) -> float:
         debug = self.config.general.get('debug', False)
         temperatures = host['temperatures']
+        hysteresis = host['hysteresis']
         speeds = host['speeds']
         for i in range(len(temperatures)):
+            if self.check_hysteresis(temp, temperatures[i], hysteresis):
+                if debug:
+                    log(
+                        "DEBUG", host.get('name', 'FAN'), f"Temp={temp:.2f}°C, threshold={temperatures[i]:.2f}°C (hysteresis={hysteresis:.2f}°C), use speed={speeds[i]}% [IN HYSTERESIS]")
+                return speeds[i]
             if temp <= temperatures[i]:
                 if debug:
-                    log("DEBUG", host.get('name', 'FAN'), f"temp={temp}, threshold={temperatures[i]}, speed={speeds[i]}")
-                return speeds[i]
-            
-        if debug:
-            log("DEBUG", host.get('name', 'FAN'), f"temp={temp} did not match any threshold, return speeds[-1]={speeds[-1]}")
+                    log("DEBUG", host.get('name', 'FAN'), f"Temp={temp:.2f}°C, threshold={temperatures[i]:.2f}°C (hysteresis={hysteresis:.2f}°C), use speed={speeds[i-1] if i > 0 else speeds[0]}% [NO HYSTERESIS]")
+                return speeds[i - 1] if i > 0 else speeds[0]
 
+        if debug:
+            log("DEBUG", host.get('name', 'FAN'), f"temp={temp:.2f}°C did not match any threshold, fallback speeds[-1]={speeds[0]}%")
         return speeds[-1]
 
     def set_fan_speed(self, level: float, host: dict):
         debug = self.config.general.get('debug', False)
         host_name = host.get('name', 'host')
         ipmi = host.get('ipmi_credentials')
-        ssh_creds = host.get('ssh_credentials')
 
         ipmi_host = ipmi.get('host') if ipmi else None
         ipmi_user = ipmi.get('username') if ipmi else None
@@ -44,7 +45,7 @@ class FanController:
         cmd = f"ipmitool{lanplus_opt}{host_opt}{user_opt}{pass_opt}{raw_cmd}".strip()
 
         if debug:
-            log("DEBUG", host_name, f"Planned set fan speed via ipmitool cmd: {cmd}")
+            log("DEBUG", host_name, f"Planned set fan speed via ipmitool command: {cmd}")
             if host_name in state:
                 state[host_name]['fan_speed'] = int(level)
             return
@@ -64,7 +65,6 @@ class FanController:
     def set_fan_control(self, mode: str, host: dict):
         host_name = host.get('name')
         debug = self.config.general.get('debug', False)
-        ssh_creds = host.get('ssh_credentials')
         ipmi = host.get('ipmi_credentials')
         ipmi_host = ipmi.get('host') if ipmi else None
         ipmi_user = ipmi.get('username') if ipmi else None
@@ -87,7 +87,7 @@ class FanController:
             state[host_name]['fan_speed'] = 0
 
         if debug:
-            log("DEBUG", host_name, f"Planned Set fan control cmd: {cmd}")
+            log("DEBUG", host_name, f"Planned Set fan control command: {cmd}")
             state[host_name]['fan_control_mode'] = mode
             return
 
@@ -101,7 +101,6 @@ class FanController:
                 state[host_name]['fan_control_mode'] = mode
         except Exception as e:
             log("ERROR", host_name, f"Error setting fan control: {e}")
-
 
     def apply_fan_speed(self, temp: float, host: dict):
         if 'name' not in host:

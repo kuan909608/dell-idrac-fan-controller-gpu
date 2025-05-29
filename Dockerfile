@@ -1,5 +1,5 @@
-# Use Python 3.11 (Debian Bullseye) as base image
-FROM python:3.11-bullseye
+# Use Python 3.13 as base image
+FROM python:3.13-slim
 
 # Set Python to output logs without buffering for real-time log visibility
 ENV PYTHONUNBUFFERED=1
@@ -12,7 +12,7 @@ RUN mkdir /root/.ssh && echo "Host *\n  StrictHostKeyChecking accept-new" >/root
 # libsensors4-dev: hardware sensor library (needed by pysensors)
 # ipmitool: for IPMI sensor support
 # openssh-client: for remote operations
-RUN apt-get update && apt-get install -y build-essential libsensors4-dev ipmitool openssh-client && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ipmitool && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app

@@ -1,7 +1,7 @@
 import os
 import sys
 import yaml
-from utils import log
+from utils import log, auto_split_thresholds
 
 class ConfigError(Exception):
     pass
@@ -97,19 +97,32 @@ class Config:
                         raise ConfigError(f'Host "{host["name"]}" missing "{key}" in ipmi_credentials.')
 
             host['hysteresis'] = host.get('hysteresis', 0)
-            
-            if len(host['temperatures']) != len(host['speeds']):
-                raise ConfigError(f'Host "{host["name"]}" temperatures and speeds count must be equal.')
-            if not isinstance(host['temperatures'], list) or not all(isinstance(x, (int, float)) for x in host['temperatures']):
-                raise ConfigError(f'Host "{host["name"]}" temperatures must be a list of numbers.')
-            if not isinstance(host['speeds'], list) or not all(isinstance(x, (int, float)) for x in host['speeds']):
-                raise ConfigError(f'Host "{host["name"]}" speeds must be a list of numbers.')
-            if len(host['temperatures']) < 2:
-                raise ConfigError(f'Host "{host["name"]}" must have at least 2 temperature thresholds and fan speeds.')
-            if any(host['temperatures'][i] > host['temperatures'][i+1] for i in range(len(host['temperatures']) - 1)):
-                raise ConfigError(f'Host "{host["name"]}" temperatures must be in ascending order or equal.')
-            if any(host['speeds'][i] > host['speeds'][i+1] for i in range(len(host['speeds']) - 1)):
-                raise ConfigError(f'Host "{host["name"]}" speeds must be in ascending order or equal.')
+
+            if (
+                isinstance(host['temperatures'], list) and
+                isinstance(host['speeds'], list) and
+                len(host['temperatures']) == 2 and
+                len(host['speeds']) == 2 and
+                host['hysteresis'] > 0
+            ):
+                t_min, t_max = host['temperatures']
+                s_min, s_max = host['speeds']
+                thresholds, speeds = auto_split_thresholds(t_min, t_max, s_min, s_max, host['hysteresis'])
+                host['temperatures'] = thresholds
+                host['speeds'] = speeds
+            else:
+                if len(host['temperatures']) != len(host['speeds']):
+                    raise ConfigError(f'Host "{host["name"]}" temperatures and speeds count must be equal.')
+                if not isinstance(host['temperatures'], list) or not all(isinstance(x, (int, float)) for x in host['temperatures']):
+                    raise ConfigError(f'Host "{host["name"]}" temperatures must be a list of numbers.')
+                if not isinstance(host['speeds'], list) or not all(isinstance(x, (int, float)) for x in host['speeds']):
+                    raise ConfigError(f'Host "{host["name"]}" speeds must be a list of numbers.')
+                if len(host['temperatures']) < 2:
+                    raise ConfigError(f'Host "{host["name"]}" must have at least 2 temperature thresholds and fan speeds.')
+                if any(host['temperatures'][i] > host['temperatures'][i+1] for i in range(len(host['temperatures']) - 1)):
+                    raise ConfigError(f'Host "{host["name"]}" temperatures must be in ascending order or equal.')
+                if any(host['speeds'][i] > host['speeds'][i+1] for i in range(len(host['speeds']) - 1)):
+                    raise ConfigError(f'Host "{host["name"]}" speeds must be in ascending order or equal.')
 
             if 'ssh_credentials' in host and host['ssh_credentials']:
                 creds = host['ssh_credentials']

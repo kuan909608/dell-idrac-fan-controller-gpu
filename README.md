@@ -19,7 +19,11 @@
 1. Python 3 is installed.
 2. **IPMI Over LAN** is enabled in all used iDRACs (_Login > Network/Security > IPMI Settings_).
    - May not be needed if you're only managing the local machine.
-3. `lm-sensors` is installed and configured on the local machine.
+3. All hosts to be monitored must have the appropriate sensor tools installed as needed:
+
+   - For monitoring local CPU: install and configure `lm-sensors`
+   - For monitoring NVIDIA GPU: install `nvidia-smi`
+   - For monitoring AMD GPU: install `rocm-smi`
 
    - Example output of `sensors` for a dual CPU system:
 
@@ -104,14 +108,14 @@ The configuration file contains two main sections: `general` and `hosts`.
 
 #### `general` section
 
-| Key                              | Description                                                                                            |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `debug`                          | Toggle debug mode (print ipmitool commands instead of executing them, enable additional logging).      |
-| `interval`                       | How often (in seconds) to read the CPUs' and GPUs' temperatures and adjust the fans' speeds.           |
-| `temperature_control_mode`       | (Optional) Use `max` or `avg` to decide if fan control is based on the maximum or average temperature. |
-| `cpu_temperature_command`        | Shell command to get CPU temperatures (semicolon separated).                                           |
-| `gpu_temperature_command_nvidia` | Shell command to get NVIDIA GPU temperatures (semicolon separated).                                    |
-| `gpu_temperature_command_amd`    | Shell command to get AMD GPU temperatures (semicolon separated).                                       |
+| Key                              | Description                                                                                       |
+| -------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `debug`                          | Toggle debug mode (print ipmitool commands instead of executing them, enable additional logging). |
+| `interval`                       | How often (in seconds) to read the CPUs' and GPUs' temperatures and adjust the fans' speeds.      |
+| `temperature_control_mode`       | Use `max` or `avg` to decide if fan control is based on the maximum or average temperature.       |
+| `cpu_temperature_command`        | Shell command to get CPU temperatures (semicolon separated).                                      |
+| `gpu_temperature_command_nvidia` | Shell command to get NVIDIA GPU temperatures (semicolon separated).                               |
+| `gpu_temperature_command_amd`    | Shell command to get AMD GPU temperatures (semicolon separated).                                  |
 
 #### `hosts` section
 
@@ -120,10 +124,10 @@ Each host object supports the following keys:
 | Key                | Description                                                                                                                           |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `name`             | Host name identifier.                                                                                                                 |
-| `fan_control_mode` | (Optional) Fan control mode, `manual` or `automatic`.                                                                                 |
-| `temperatures`     | List of three upper bounds (in °C) for temperature thresholds.                                                                        |
-| `speeds`           | List of three speeds (in %) for each threshold.                                                                                       |
-| `hysteresis`       | (Optional) Hysteresis value in °C to prevent rapid fan speed changes.                                                                 |
+| `fan_control_mode` | Fan control mode, `manual` or `automatic`.                                                                                            |
+| `temperatures`     | List of temperature thresholds (in °C). **Must have at least 2 values.**                                                              |
+| `speeds`           | List of fan speeds (in %) for each threshold. **Must have at least 2 values.**                                                        |
+| `hysteresis`       | Hysteresis value in °C to prevent rapid fan speed changes.                                                                            |
 | `ipmi_credentials` | (Optional) IPMI login info for this host.                                                                                             |
 | `ssh_credentials`  | (Optional) SSH login info for this host. Supports `host`, `username`, `password`, and optional `key_path` for SSH key authentication. |
 | `gpu_type`         | (Optional) Supported GPU types, can be a string (e.g., `nvidia`) or an array (e.g., `[nvidia, amd]`).                                 |
@@ -137,7 +141,31 @@ Each VM object supports the following keys:
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `name`            | VM name identifier.                                                                                                     |
 | `ssh_credentials` | SSH login info for the VM. Supports `host`, `username`, `password`, and optional `key_path` for SSH key authentication. |
-| `gpu_type`        | (Optional) Supported GPU types for the VM, can be a string (e.g., `nvidia`) or an array (e.g., `[nvidia, amd]`).        |
+| `gpu_type`        | Supported GPU types for the VM, can be a string (e.g., `nvidia`) or an array (e.g., `[nvidia, amd]`).                   |
+
+### Auto-splitting thresholds and speeds
+
+If you only specify 2 pairs of `temperatures` and `speeds` (e.g., `[40, 80]` and `[20, 80]`), the system will automatically split them into multiple steps based on the `hysteresis` value.
+
+The splitting logic:
+
+- The range between `temp_min` and `temp_max` will be divided into intervals of `hysteresis * 2`.
+- For each interval, a new threshold and corresponding speed will be generated, resulting in smoother fan speed transitions.
+
+**Example:**
+
+```yaml
+temperatures: [40, 80]
+speeds: [20, 80]
+hysteresis: 5
+```
+
+This will be automatically expanded to:
+
+```
+thresholds: [40.00, 50.00, 60.00, 70.00, 80.00]
+speeds: [20, 35, 50, 65, 80]
+```
 
 #### Example
 
@@ -155,18 +183,18 @@ hosts:
     speeds: [20, 50, 80]
     hysteresis: 5
     ipmi_credentials:
-      host: 192.168.134.31
+      host: 10.0.0.1
       username: admin
       password: password
     ssh_credentials:
-      host: 192.168.134.231
+      host: 10.0.0.2
       username: admin
       password: password
     gpu_type: nvidia
     vms:
       - name: vm1
         ssh_credentials:
-          host: 192.168.134.98
+          host: 10.0.0.3
           username: user
           password: password
         gpu_type: [nvidia]
@@ -175,6 +203,30 @@ hosts:
     speeds: [30, 60, 90]
     hysteresis: 5
     gpu_type: nvidia
+```
+
+### Auto-splitting thresholds and speeds
+
+If you only specify 2 pairs of `temperatures` and `speeds` (e.g., `[40, 80]` and `[20, 80]`), the system will automatically split them into multiple steps based on the `hysteresis` value.
+
+The splitting logic:
+
+- The range between `temp_min` and `temp_max` will be divided into intervals of `hysteresis * 2`.
+- For each interval, a new threshold and corresponding speed will be generated, resulting in smoother fan speed transitions.
+
+**Example:**
+
+```yaml
+temperatures: [40, 80]
+speeds: [20, 80]
+hysteresis: 5
+```
+
+This will be automatically expanded to:
+
+```
+thresholds: [40.00, 50.00, 60.00, 70.00, 80.00]
+speeds: [20, 35, 50, 65, 80]
 ```
 
 #### Additional Notes
@@ -201,27 +253,33 @@ hosts:
 
 ## How it works
 
-Every `general`.`interval` seconds the controller will fetch the temperatures of all the available CPU cores, average them and round the result (referred to as _Tavg_ below). It will then follow this logic to set the fans' speed percentage or engage automatic (hardware managed) control.
+Every `interval` seconds, the controller will collect CPU and GPU temperatures from all hosts and their VMs.  
+The highest temperature among all CPUs/GPUs (including VMs) is used as the control temperature to determine the fan speed.
+
+- If temperature data is missing or abnormal, the fan will run at the highest configured speed (the last value in `speeds`) for safety.
+- Fan speed is set according to the configured thresholds and speeds.
+- All temperature readings and control actions are recorded in the internal state for monitoring and debugging.
 
 Fan speed is determined by each temperature threshold and its corresponding speed. The number of thresholds/speeds can be any matching pair count.
 
 | Condition                        | Fan speed                                         |
 | -------------------------------- | ------------------------------------------------- |
-| _Tavg_ ≤ Threshold1              | Speed1                                            |
-| Threshold1 < _Tavg_ ≤ Threshold2 | Speed2                                            |
+| _Tmax_ ≤ Threshold1              | Speed1                                            |
+| Threshold1 < _Tmax_ ≤ Threshold2 | Speed2                                            |
 | ...                              | ...                                               |
-| _Tavg_ > ThresholdN              | Highest configured speed (last value in `speeds`) |
+| _Tmax_ > ThresholdN              | Highest configured speed (last value in `speeds`) |
 
-If `hysteresis` is set for a given host, the controller will wait for the temperature to go below _ThresholdN - hysteresis_ temperature. For example: with a Threshold2 of 37°C and an hysteresis of 3°C, the fans won't slow down from Threshold3 to Threshold2 speed until the temperature reaches 34°C.
+If `hysteresis` is set for a given host, the controller will wait for the temperature to go below _ThresholdN - hysteresis_ before lowering the fan speed.  
+For example: with a Threshold2 of 37°C and a hysteresis of 3°C, the fans won't slow down from Threshold3 to Threshold2 speed until the temperature reaches 34°C.
 
 ## Notes on remote hosts
 
 This controller can monitor the temperature and change the fan speed of remote hosts too: the only caveat is that you'll need to extract the temperatures via an external command. This could be via SSH, for example. The controller expects such a command to return **a newline-delimited list of numbers parseable as floats**.
 
-**The included example is a good fit for a remote FreeNAS host**: it will connect to it via SSH and extract the temperature of all CPU cores, one per line. This way you'll be able to manage that machine just as well as the local one without applying any hardly trackable modification to the base OS.
+**The included example is a good fit for a remote Proxmox VE host**: it will connect to it via SSH and extract the temperature of all CPU cores, one per line. This way you'll be able to manage that machine just as well as the local one without applying any hardly trackable modification to the base OS.
 
 ## Credits
 
-Major thanks go to [NoLooseEnds's directions](https://github.com/NoLooseEnds/Scripts/tree/master/R710-IPMI-TEMP) for the core commands and [sulaweyo's ruby script](https://github.com/sulaweyo/r710-fan-control) for the idea of automating them.
+Major thanks go to [NoLooseEnds's directions](https://github.com/NoLooseEnds/Scripts/tree/master/R710-IPMI-TEMP) for the core commands, [sulaweyo's ruby script](https://github.com/sulaweyo/r710-fan-control) for the idea of automating them, and [nmaggioni's r710-fan-controller](https://github.com/nmaggioni/r710-fan-controller) as the main forked project.
 
-**Note:** The key difference of this script, other than handling remote hosts, is that it's based on the temperature of the CPUs' cores and not on the ambient temperature sensor on the server's motherboard. The R730 does not expose CPU temperature over IPMI, but other models do; this script should work with them nonetheless.
+**Note:** The key difference of this script, other than handling remote hosts, is that it's based on the temperature of the CPUs' cores and not on the ambient temperature sensor on the server's motherboard.

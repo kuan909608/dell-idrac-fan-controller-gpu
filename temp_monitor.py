@@ -16,13 +16,10 @@ class TempMonitor:
             return None
 
         debug = self.config.general.get('debug', False)
-        ssh_creds = host.get('ssh_credentials')
         ssh_command = self.config.general['cpu_temperature_command']
 
         temps = []
         try:
-            if debug:
-                log("DEBUG", host['name'], f"Command for {host['name']}: {ssh_command}")
             output, error = run_command(host, ssh_command, logger=log, log_tag=host['name'], debug=debug)
             if error or not output or not output.strip():
                 log("ERROR", host['name'], f"Error getting CPU temps from host {host['name']}: {error if error else 'No output'}")
@@ -32,12 +29,6 @@ class TempMonitor:
             log("ERROR", host['name'], f"Error getting CPU temps from host {host['name']}: {e}")
             return None
         return temps if temps else None
-
-    def get_cpu_temp_overall(self, host: dict) -> Optional[float]:
-        temps = self.get_cpu_temps(host)
-        if temps:
-            return max(temps)
-        return None
 
     def get_gpu_temps(self, host: dict, vm_name: Optional[str] = None) -> Optional[List[float]]:
         if vm_name is not None:
@@ -50,7 +41,6 @@ class TempMonitor:
 
         debug = self.config.general.get('debug', False)
         name = device.get('name', '')
-        ssh_creds = device['ssh_credentials']
         gpu_type = device.get('gpu_type')
         if not gpu_type or (isinstance(gpu_type, list) and len(gpu_type) == 0):
             return None
