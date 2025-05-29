@@ -45,7 +45,7 @@ if [ -f "$TARGETDIR/fan_control.yaml" ]; then
     mv "$TARGETDIR/fan_control.yaml"{,.old}
 fi
 cp fan_control.yaml.example "$TARGETDIR/"
-cp fan_control.py "$TARGETDIR/"
+cp main.py "$TARGETDIR/"
 cp fan_controller.py "$TARGETDIR/"
 cp config_loader.py "$TARGETDIR/"
 cp temp_monitor.py "$TARGETDIR/"

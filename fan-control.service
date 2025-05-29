@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart={TARGETDIR}/venv/bin/python3 -u {TARGETDIR}/fan_control.py
+ExecStart={TARGETDIR}/venv/bin/python3 -u {TARGETDIR}/main.py
 Restart=always
 RestartSec=15
 

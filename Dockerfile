@@ -25,4 +25,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Default command to run main program
-CMD ["python", "./fan_control.py"]
+CMD ["python", "./main.py"]
