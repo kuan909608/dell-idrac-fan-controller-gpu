@@ -23,7 +23,7 @@ class TempMonitor:
         try:
             if debug:
                 log("DEBUG", host['name'], f"Command for {host['name']}: {ssh_command}")
-            output, error = run_command(host, ssh_command, logger=log, log_tag=host['name'])
+            output, error = run_command(host, ssh_command, logger=log, log_tag=host['name'], debug=debug)
             if error or not output or not output.strip():
                 log("ERROR", host['name'], f"Error getting CPU temps from host {host['name']}: {error if error else 'No output'}")
                 return None
@@ -48,6 +48,7 @@ class TempMonitor:
         else:
             device = host
 
+        debug = self.config.general.get('debug', False)
         name = device.get('name', '')
         ssh_creds = device['ssh_credentials']
         gpu_type = device.get('gpu_type')
@@ -72,7 +73,7 @@ class TempMonitor:
 
         temps = []
         for ssh_command in cmds:
-            output, error = run_command(device, ssh_command, logger=log, log_tag=name)
+            output, error = run_command(device, ssh_command, logger=log, log_tag=name, debug=debug)
             if error or not output or not isinstance(output, str) or not output.strip():
                 log("ERROR", name, f"Error getting GPU temps from Device {name}: {error if error else 'No output'}")
                 continue

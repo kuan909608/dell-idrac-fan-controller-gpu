@@ -50,7 +50,7 @@ class FanController:
             return
 
         try:
-            output, error = run_command(host, cmd, logger=log, log_tag=host_name)
+            output, error = run_command(host, cmd, logger=log, log_tag=host_name, debug=debug)
             if debug:
                 log("DEBUG", host_name, f"Command output: {output}")
             if error:
@@ -92,7 +92,7 @@ class FanController:
             return
 
         try:
-            output, error = run_command(host, cmd, logger=log, log_tag=host_name)
+            output, error = run_command(host, cmd, logger=log, log_tag=host_name, debug=debug)
             if output:
                 log("DEBUG", host_name, f"Command output: {output}")
             if error:

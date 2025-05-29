@@ -12,13 +12,7 @@ RUN mkdir /root/.ssh && echo "Host *\n  StrictHostKeyChecking accept-new" >/root
 # libsensors4-dev: hardware sensor library (needed by pysensors)
 # ipmitool: for IPMI sensor support
 # openssh-client: for remote operations
-RUN apt-get update &&
-    apt-get install -y \
-        build-essential \
-        libsensors4-dev \
-        ipmitool \
-        openssh-client &&
-    rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y build-essential libsensors4-dev ipmitool openssh-client && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
