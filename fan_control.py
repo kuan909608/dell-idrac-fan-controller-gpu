@@ -19,7 +19,7 @@ def main():
     monitor = TempMonitor(config)
     debug = config.general.get('debug', False)
     for host in config.hosts:
-        thresholds_str = "，".join(
+        thresholds_str = ", ".join(
             f"{t:.2f}°C ({s}%)" for t, s in zip(host['temperatures'], host['speeds'])
         )
         log("INFO", host['name'], f"Host temperature thresholds: {thresholds_str}")
