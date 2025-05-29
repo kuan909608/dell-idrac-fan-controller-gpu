@@ -1,8 +1,8 @@
 [English](README.md) | [繁體中文](README_zh-TW.md)
 
-# Dell R730 Fan Control Script
+# Dell iDRAC Fan Controller with GPU Support
 
-> A temperature-based fan speed controller for Dell servers (tested on an R730, should work with most PowerEdges). Supports both local and remote hosts.
+> A temperature-based fan speed controller for Dell PowerEdge servers (tested on an R730, should work with most PowerEdges). Supports both local and remote hosts.
 
 - [Requisites](#requisites)
 - [Installation / Upgrade](#installation--upgrade)

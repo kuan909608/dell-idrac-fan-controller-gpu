@@ -1,8 +1,8 @@
 [English](README.md) | [繁體中文](README_zh-TW.md)
 
-# Dell R730 風扇控制腳本（繁體中文版）
+# Dell iDRAC 風扇控制器（支援 GPU）
 
-> 一套以溫度為基準的 Dell 伺服器風扇自動控制腳本（已在 R730 測試，應適用多數 PowerEdge 機型），支援本機與遠端主機。
+> 一套以溫度為基準的 Dell PowerEdge 伺服器風扇自動控制腳本（已在 R730 測試，應適用多數 PowerEdge 機型），支援本機與遠端主機。
 
 - [需求環境](#需求環境)
 - [安裝／升級](#安裝升級)
