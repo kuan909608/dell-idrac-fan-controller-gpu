@@ -17,28 +17,28 @@ hosts:
     speeds: [20, 50, 80]        # Fan speed percentages corresponding to thresholds
     hysteresis: 5               # Hysteresis value to avoid frequent switching
     ipmi_credentials:           # IPMI login information
-      host: 192.168.1.100       # IPMI host address
+      host: 10.0.0.10           # IPMI host address (de-identified)
       username: admin           # IPMI username
       password: your_password   # IPMI password
     ssh_credentials:            # SSH login information
-      host: 192.168.1.101       # SSH host address
+      host: 10.0.0.11           # SSH host address (de-identified)
       username: admin           # SSH username
       password: your_password   # SSH password
       # key_path: /app/keys/id_rsa   # (Optional) SSH private key path, recommended to store in keys/ folder
-    gpu_type: [nvidia, amd]     # Supported GPU types, use array format
+    gpu_type: [nvidia, amd]     # Supported GPU types. Use array format. Valid values: nvidia (for NVIDIA GPU), amd (for AMD GPU). You can specify one or both, e.g. [nvidia], [amd], or [nvidia, amd].
     vms:                        # VM list (if any)
       - name: ExampleVM1        # VM name
         ssh_credentials:        # VM SSH login information
-          host: 192.168.1.200
+          host: 10.0.0.20
           username: user
           password: your_password
-        gpu_type: [nvidia]      # Supported GPU types for VM
+        gpu_type: [nvidia]      # Supported GPU types for VM. Use array format. Valid values: nvidia, amd.
 
   - name: ExampleHost2
     fan_control_mode: manual
     temperatures: [35, 55, 75]
     speeds: [30, 60, 90]
     hysteresis: 5
-    gpu_type: [nvidia]          # Only supports NVIDIA
+    gpu_type: [nvidia]          # Only supports NVIDIA. Use array format. Valid values: nvidia, amd.
 
 # Add more hosts as needed following the above format
