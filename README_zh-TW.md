@@ -65,6 +65,8 @@ sudo ./install.sh [<安裝路徑>]
 如需以 Docker 管理遠端主機，請自行掛載 YAML 設定檔與 SSH 金鑰資料夾：
 
 ```bash
+git clone https://github.com/kuan909608/dell-idrac-fan-controller-gpu.git
+cd dell-idrac-fan-controller-gpu
 docker build -t fan_control .
 docker run -d --restart=always --name fan_control -v "./fan_control.yaml:/app/fan_control.yaml:ro" -v "./keys:/app/keys:ro" fan_control
 ```

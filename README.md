@@ -64,6 +64,8 @@ The default installation path is `/opt/fan_control` and the service will be inst
 To deploy remote fan management with Docker (`fan_control` running on a separate host and only interacting with remote ones, see [Notes on remote hosts](#notes-on-remote-hosts)), build the image in the repo and bind mount your own YAML config and SSH keys folder:
 
 ```bash
+git clone https://github.com/kuan909608/dell-idrac-fan-controller-gpu.git
+cd dell-idrac-fan-controller-gpu
 docker build -t fan_control .
 docker run -d --restart=always --name fan_control -v "./fan_control.yaml:/app/fan_control.yaml:ro" -v "./keys:/app/keys:ro" fan_control
 ```
