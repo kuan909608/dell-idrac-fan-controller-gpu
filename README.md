@@ -1,4 +1,4 @@
-[English](README.md) | [繁體中文](README_zh-TW.md)
+[English](README.md) | [繁體中文](README.zh-TW.md)
 
 # Dell iDRAC Fan Controller with GPU Support
 
