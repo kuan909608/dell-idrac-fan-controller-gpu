@@ -22,6 +22,7 @@ All notable user-facing changes to this project are documented here. The project
 - Aligned English and Traditional Chinese documentation with actual `max`/`avg`, hysteresis, Docker, fail-safe, Web monitoring, and automatic-mode recovery behavior.
 - Expanded contribution and security guidance for physical cooling, credentials, root privileges, and release evidence.
 - Made the systemd installer independent of the caller's working directory and installed the actual runtime `lm-sensors` package.
+- Recorded a successful clean Rocky Linux 9.6 systemd install/startup test performed with dry-run configuration and an IPMI-blocking safety shim.
 
 ## Historical development before formal versioning
 

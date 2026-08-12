@@ -25,6 +25,7 @@ Fail-safe selects the highest **configured** curve speed; it is not an unconditi
 ## Deployment notes
 
 - Python 3.11 and 3.13 are exercised by CI.
+- The systemd installer and service startup were exercised on Rocky Linux 9.6 with dry-run configuration and an IPMI-blocking safety shim; live fan commands were not part of that test.
 - The Docker image is designed for remote management and does not bundle host GPU tooling.
 - Runtime configuration reload requires mounting the configuration directory, not a single file, in Docker.
 - The monitoring service has no authentication or TLS and should remain loopback-only or behind a suitable proxy.

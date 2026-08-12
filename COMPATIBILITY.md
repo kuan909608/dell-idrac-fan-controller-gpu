@@ -28,7 +28,7 @@ These statuses describe software support only; they do not upgrade any hardware 
 | --- | --- | --- |
 | Linux, Python 3.11 | **Expected** | Unit, compile, packaging, and security tests run in CI; no release-specific physical-hardware record. |
 | Linux, Python 3.13 | **Expected** | Unit, compile, packaging, and security tests run in CI; no release-specific physical-hardware record. |
-| systemd installation | **Expected** | Installer and unit syntax/packaging contracts are tested; distro and hardware integration are not. |
+| systemd installation | **Expected** | A clean install and service startup were verified on Rocky Linux 9.6 on 2026-08-12 using the exact PR commit, an isolated target directory, dry-run configuration, and an `ipmitool` blocking shim. Runtime files, config permissions, startup imports, unit wiring, journal output, shutdown, and disablement passed. Live IPMI control was intentionally not exercised by this systemd test. |
 | Docker Compose, remote management | **Expected** | Compose mounts and lifecycle are covered by repository tests. The image is designed for remote sensors/IPMI and is not a local GPU runtime image. |
 | Proxmox VE host or VM monitoring over SSH | **Expected** | Generic SSH sensor execution and VM GPU aggregation are implemented; no complete Proxmox/hardware report is recorded. |
 | Other operating systems or orchestrators | **Unknown** | No supported deployment instructions or evidence are recorded. |
