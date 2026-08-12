@@ -4,11 +4,18 @@
 
 > 一套以溫度為基準的 Dell PowerEdge 伺服器風扇自動控制腳本（已在 R730 測試，應適用多數 PowerEdge 機型），支援本機與遠端主機。
 
+這個分支面向在 Dell PowerEdge、homelab 或 Proxmox 環境部署本地 AI 與其他 GPU 工作負載的使用者。它整合 CPU、NVIDIA/AMD GPU 與 VM 溫度，協助維護者觀察散熱狀態，並在原廠策略不適合非標準加速卡時使用可預期的風扇曲線。
+
+> [!CAUTION]
+> 本軟體會透過 raw IPMI 指令改變實體散熱狀態，並可能以 root 執行。它不能保證硬體安全。請在實際伺服器、iDRAC 韌體、GPU 與工作負載上驗證門檻，保留帶外監控，並測試服務關閉或故障時能恢復自動風扇控制。
+
 - [需求環境](#需求環境)
 - [安裝／升級](#安裝升級)
   - [Docker 部署](#docker-部署)
 - [設定說明](#設定說明)
 - [運作邏輯](#運作邏輯)
+- [唯讀 Web 監控](#唯讀-web-監控)
+- [安全性](#安全性)
 - [多主機與 VM 支援](#多主機與-vm-支援)
 - [遠端主機注意事項](#遠端主機注意事項)
 - [致謝](#致謝)
@@ -68,7 +75,7 @@ sudo ./install.sh [<安裝路徑>]
 git clone https://github.com/kuan909608/dell-idrac-fan-controller-gpu.git
 cd dell-idrac-fan-controller-gpu
 docker build -t fan_control .
-docker run -d --restart=always --name fan_control -v "./fan_control_config.yaml:/app/fan_control_config.yaml:ro" -v "./keys:/app/keys:ro" fan_control
+docker run -d --restart=always --name fan_control -v "./fan_control_config.yaml:/app/fan_control_config.yaml:ro" -v "./keys:/app/keys:ro" -v "$HOME/.ssh/known_hosts:/root/.ssh/known_hosts:ro" fan_control
 ```
 
 建議於正式環境搭配 Orchestrator 使用。
@@ -117,6 +124,9 @@ docker run -d --restart=always --name fan_control -v "./fan_control_config.yaml:
 | `debug`                          | 除錯模式（僅顯示指令不執行，並輸出詳細日誌）           |
 | `interval`                       | 每次溫度檢查與風扇調整的間隔秒數                       |
 | `temperature_control_mode`       | 風扇控制依據，`max` 代表取最高溫，`avg` 代表取平均溫度 |
+| `web_enabled`                    | 是否啟用唯讀監控頁面                                 |
+| `web_host`                       | 監控服務綁定位址，預設 `127.0.0.1`                   |
+| `web_port`                       | 監控服務 TCP port，預設 `8080`                       |
 | `cpu_temperature_command`        | 取得 CPU 溫度的 shell 指令（以分號分隔）               |
 | `gpu_temperature_command_nvidia` | 取得 NVIDIA GPU 溫度的 shell 指令（以分號分隔）        |
 | `gpu_temperature_command_amd`    | 取得 AMD GPU 溫度的 shell 指令（以分號分隔）           |
@@ -131,7 +141,7 @@ docker run -d --restart=always --name fan_control -v "./fan_control_config.yaml:
 | `speeds`           | 對應風扇轉速（%），需與 temperatures 成對，**必須至少 2 組**，數量不限                        |
 | `hysteresis`       | 遲滯值，避免頻繁切換風速（°C），建議小於任兩組相鄰溫度門檻的差值                              |
 | `ipmi_credentials` | （選填）本機 IPMI 登入資訊                                                                    |
-| `ssh_credentials`  | （選填）本機 SSH 登入資訊，支援 `host`、`username`、`password`，可選填 `key_path`（私鑰路徑） |
+| `ssh_credentials`  | （選填）SSH 登入資訊；需要 `host`、`username`，並提供 `password` 或 `key_path` 其中之一；未知 host key 會被拒絕 |
 | `gpu_type`         | （選填）支援的 GPU 類型，可為字串（如 `nvidia`）或陣列（如 `[nvidia, amd]`）                  |
 | `vms`              | （選填）VM 清單，每台 VM 可自訂 SSH 認證與 GPU 類型，詳見下方 vms 物件說明                    |
 
@@ -142,7 +152,7 @@ docker run -d --restart=always --name fan_control -v "./fan_control_config.yaml:
 | 欄位名稱          | 說明                                                                                   |
 | ----------------- | -------------------------------------------------------------------------------------- |
 | `name`            | VM 名稱                                                                                |
-| `ssh_credentials` | VM 的 SSH 登入資訊，支援 `host`、`username`、`password`，可選填 `key_path`（私鑰路徑） |
+| `ssh_credentials` | VM 的 SSH 登入資訊；需要 `host`、`username`，並提供 `password` 或 `key_path` 其中之一 |
 | `gpu_type`        | 支援的 GPU 類型，可為字串（如 `nvidia`）或陣列（如 `[nvidia, amd]`）                   |
 
 ##### 自動分割溫度門檻與風速
@@ -253,9 +263,38 @@ speeds: [20, 35, 50, 65, 80]
 若有設定 `hysteresis`，當溫度下降時，必須低於該門檻值減去 hysteresis 才會降低風扇轉速。  
 例如：Threshold2 設為 37°C，hysteresis 設為 3°C，則風扇不會從 Threshold3 轉速降到 Threshold2，直到溫度降到 34°C。
 
+## 唯讀 Web 監控
+
+控制器內建簡潔的 TUI 風格頁面與 JSON 狀態端點，可查看 CPU/GPU 溫度、VM GPU 來源、控制溫度、風扇模式與轉速、sensor 狀態、錯誤及最後更新時間。
+
+```yaml
+general:
+  web_enabled: true
+  web_host: 127.0.0.1
+  web_port: 8080
+```
+
+在控制器主機開啟 `http://127.0.0.1:8080/`；`GET /api/status` 會傳回相同的唯讀 JSON 狀態。所有修改方法都會被拒絕，輸出也不包含憑證。
+
+遠端查看時，建議維持 loopback 綁定並使用 SSH tunnel：
+
+```bash
+ssh -L 8080:127.0.0.1:8080 operator@controller-host
+```
+
+請勿把內建伺服器直接暴露在不受信任的網路。如需多人存取，應置於具有驗證與 TLS 的 reverse proxy 後方。
+
+## 安全性
+
+本專案跨越高權限 Shell、SSH、IPMI、憑證、dependency 與實體散熱邊界。未知 SSH host key 預設會被拒絕；IPMI 密碼透過 standard input 傳遞，不放在 process arguments；debug 設定輸出會遮蔽敏感欄位。管理者設定的 sensor command 仍屬受信任的 Shell 輸入，不應直接複製不可信來源提供的指令。
+
+安全問題請依 [SECURITY.md](SECURITY.md) 使用 GitHub 私密漏洞回報，請勿在 issue 或 log 中放入真實密碼、private key、公網 IP 或可識別硬體的資料。
+
+已驗證與待補證據的硬體組合記錄於 [COMPATIBILITY.md](COMPATIBILITY.md)。
+
 ## 遠端主機注意事項
 
-本控制器也能監控遠端主機的溫度並調整風扇轉速：唯一需要注意的是，必須透過外部指令取得溫度資料，例如 SSH。控制器預期該指令回傳**可被解析為浮點數的換行分隔數字清單**。
+本控制器也能監控遠端主機的溫度並調整風扇轉速：唯一需要注意的是，必須透過外部指令取得溫度資料，例如 SSH。控制器預期該指令回傳**可被解析為浮點數的分號分隔數字清單**。
 
 **內建範例適用於遠端 Proxmox VE 主機**：會透過 SSH 連線並取得所有 CPU core 的溫度，每行一個數字。這樣就能像管理本機一樣管理該主機，無需對作業系統做難以追蹤的修改。
 

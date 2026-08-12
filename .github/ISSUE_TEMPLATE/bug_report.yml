@@ -1,0 +1,30 @@
+name: Bug report
+description: Report a reproducible controller or monitoring problem without secrets.
+body:
+  - type: markdown
+    attributes:
+      value: Never include passwords, private keys, public IP addresses, or hardware serial numbers.
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Dell model, iDRAC generation/firmware, OS, GPU, and systemd or Docker deployment.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Observed and expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs
+      description: Remove credentials, addresses, hostnames, serial numbers, and key paths.

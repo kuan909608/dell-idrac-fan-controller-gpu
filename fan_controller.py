@@ -1,6 +1,36 @@
 import os
 from state import state
-from utils import log, run_command
+from utils import CommandSpec, format_command, log, run_command
+
+
+def _build_ipmi_command(host: dict, raw_args) -> CommandSpec:
+    ipmi = host.get('ipmi_credentials')
+    argv = ['ipmitool']
+    stdin_data = None
+    if ipmi:
+        argv.extend([
+            '-I', 'lanplus',
+            '-H', str(ipmi['host']).strip(),
+            '-U', str(ipmi['username']),
+            '-f', '/dev/stdin',
+        ])
+        stdin_data = f"{ipmi['password']}\n"
+    argv.extend(raw_args)
+    return CommandSpec(argv=argv, stdin_data=stdin_data)
+
+
+def build_ipmi_control_command(host: dict, mode: str) -> CommandSpec:
+    mode_value = {'manual': '0x00', 'automatic': '0x01'}.get(mode)
+    if mode_value is None:
+        raise ValueError(f"Unknown fan control mode: {mode}")
+    return _build_ipmi_command(host, ['raw', '0x30', '0x30', '0x01', mode_value])
+
+
+def build_ipmi_speed_command(host: dict, level: float) -> CommandSpec:
+    return _build_ipmi_command(
+        host,
+        ['raw', '0x30', '0x30', '0x02', '0xff', f'0x{int(level):02x}'],
+    )
 
 class FanController:
     def __init__(self, config):
@@ -32,20 +62,10 @@ class FanController:
     def set_fan_speed(self, level: float, host: dict):
         debug = self.config.general.get('debug', False)
         host_name = host.get('name', 'host')
-        ipmi = host.get('ipmi_credentials')
-
-        ipmi_host = ipmi.get('host') if ipmi else None
-        ipmi_user = ipmi.get('username') if ipmi else None
-        ipmi_pass = ipmi.get('password') if ipmi else None
-        host_opt = f" -H {str(ipmi_host).strip()}" if ipmi_host and str(ipmi_host).strip() else ""
-        user_opt = f" -U {ipmi_user}" if ipmi_user else ""
-        pass_opt = f" -P {ipmi_pass}" if ipmi_pass else ""
-        lanplus_opt = " -I lanplus" if ipmi else ""
-        raw_cmd = f" raw 0x30 0x30 0x02 0xff 0x{int(level):02x}"
-        cmd = f"ipmitool{lanplus_opt}{host_opt}{user_opt}{pass_opt}{raw_cmd}".strip()
+        cmd = build_ipmi_speed_command(host, level)
 
         if debug:
-            log("DEBUG", host_name, f"Planned set fan speed via ipmitool command: {cmd}")
+            log("DEBUG", host_name, f"Planned set fan speed via ipmitool command: {format_command(cmd)}")
             if host_name in state:
                 state[host_name]['fan_speed'] = int(level)
             return
@@ -65,31 +85,20 @@ class FanController:
     def set_fan_control(self, mode: str, host: dict):
         host_name = host.get('name')
         debug = self.config.general.get('debug', False)
-        ipmi = host.get('ipmi_credentials')
-        ipmi_host = ipmi.get('host') if ipmi else None
-        ipmi_user = ipmi.get('username') if ipmi else None
-        ipmi_pass = ipmi.get('password') if ipmi else None
-        host_opt = f" -H {str(ipmi_host).strip()}" if ipmi_host and str(ipmi_host).strip() else ""
-        user_opt = f" -U {ipmi_user}" if ipmi_user else ""
-        pass_opt = f" -P {ipmi_pass}" if ipmi_pass else ""
-        lanplus_opt = " -I lanplus" if ipmi else ""
-
-        if mode == "manual":
-            cmd = f"ipmitool{lanplus_opt}{host_opt}{user_opt}{pass_opt} raw 0x30 0x30 0x01 0x00".strip()
-        elif mode == "automatic":
-            cmd = f"ipmitool{lanplus_opt}{host_opt}{user_opt}{pass_opt} raw 0x30 0x30 0x01 0x01".strip()
-        else:
+        try:
+            cmd = build_ipmi_control_command(host, mode)
+        except ValueError:
             log("WARN", host_name, f"Unknown fan control mode: {mode}")
             state[host_name]['fan_control_mode'] = mode
-            return
+            return False
         
         if mode == "automatic":
             state[host_name]['fan_speed'] = 0
 
         if debug:
-            log("DEBUG", host_name, f"Planned Set fan control command: {cmd}")
+            log("DEBUG", host_name, f"Planned Set fan control command: {format_command(cmd)}")
             state[host_name]['fan_control_mode'] = mode
-            return
+            return True
 
         try:
             output, error = run_command(host, cmd, logger=log, log_tag=host_name, debug=debug)
@@ -97,10 +106,13 @@ class FanController:
                 log("DEBUG", host_name, f"Command output: {output}")
             if error:
                 log("ERROR", host_name, f"Command error: {error}")
+                return False
             else:
                 state[host_name]['fan_control_mode'] = mode
+                return True
         except Exception as e:
             log("ERROR", host_name, f"Error setting fan control: {e}")
+            return False
 
     def apply_fan_speed(self, temp: float, host: dict):
         if 'name' not in host:

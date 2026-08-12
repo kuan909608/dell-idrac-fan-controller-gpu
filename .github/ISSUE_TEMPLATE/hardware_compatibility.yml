@@ -1,0 +1,40 @@
+name: Hardware compatibility report
+description: Share a verified, de-identified deployment result.
+body:
+  - type: input
+    id: model
+    attributes:
+      label: Dell model
+    validations:
+      required: true
+  - type: input
+    id: idrac
+    attributes:
+      label: iDRAC generation and firmware
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+    validations:
+      required: true
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU model and driver family
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment
+      options: [systemd, Docker]
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Verified result and limitations
+    validations:
+      required: true
