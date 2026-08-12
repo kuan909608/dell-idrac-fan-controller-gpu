@@ -10,6 +10,7 @@
 > 本軟體會透過 raw IPMI 指令改變實體散熱狀態，並可能以 root 執行。它不能保證硬體安全。請在實際伺服器、iDRAC 韌體、GPU 與工作負載上驗證門檻，保留帶外監控，並測試服務關閉或故障時能恢復自動風扇控制。
 
 - [需求環境](#需求環境)
+- [專案結構](#專案結構)
 - [安裝／升級](#安裝升級)
   - [Docker 部署](#docker-部署)
 - [設定說明](#設定說明)
@@ -21,6 +22,26 @@
 - [致謝](#致謝)
 
 ---
+
+## 專案結構
+
+```text
+.
+├── main.py                     # 程式入口與設定熱重載流程
+├── config_loader.py            # YAML 載入與驗證
+├── control_policy.py           # 溫度彙整與失效安全策略
+├── fan_controller.py           # Dell IPMI 風扇控制
+├── temp_monitor.py             # 本機與遠端感測資料收集
+├── monitoring_web.py           # 唯讀 TUI 風格儀表板與 JSON API
+├── lifecycle.py / state.py     # 關閉恢復與共用執行狀態
+├── fan_control_config.yaml.example
+├── Dockerfile / docker-compose.yml
+├── install.sh / fan-control.service
+├── tests/                       # 單元、安全、生命週期與封裝測試
+└── .github/                     # CI、Issue 表單與貢獻自動化
+```
+
+本機設定、SSH 金鑰、虛擬環境、快取與瀏覽器測試產物不會納入 Git 或 Docker 映像。
 
 ## 需求環境
 

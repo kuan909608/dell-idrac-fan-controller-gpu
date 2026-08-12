@@ -10,6 +10,7 @@ This fork is designed for homelab and Proxmox users running local AI or other GP
 > This software changes physical cooling through raw IPMI commands and may run as root. It cannot guarantee hardware safety. Validate thresholds on your exact server, iDRAC firmware, GPU, and workload; retain out-of-band monitoring; and verify automatic fan restoration during shutdown and failure tests.
 
 - [Requisites](#requisites)
+- [Project layout](#project-layout)
 - [Installation / Upgrade](#installation--upgrade)
   - [Docker](#docker)
 - [Configuration](#configuration)
@@ -20,6 +21,26 @@ This fork is designed for homelab and Proxmox users running local AI or other GP
 - [Credits](#credits)
 
 ---
+
+## Project layout
+
+```text
+.
+├── main.py                     # Application entry point and reload lifecycle
+├── config_loader.py            # YAML loading and validation
+├── control_policy.py           # Temperature aggregation and fail-safe policy
+├── fan_controller.py           # Dell IPMI fan control
+├── temp_monitor.py             # Local and remote sensor collection
+├── monitoring_web.py           # Read-only TUI-style dashboard and JSON API
+├── lifecycle.py / state.py     # Shutdown recovery and shared runtime state
+├── fan_control_config.yaml.example
+├── Dockerfile / docker-compose.yml
+├── install.sh / fan-control.service
+├── tests/                       # Unit, security, lifecycle and packaging tests
+└── .github/                     # CI, issue forms and contribution automation
+```
+
+Local configuration, SSH keys, virtual environments, caches, and generated browser artifacts are intentionally excluded from Git and Docker images.
 
 ## Requisites
 
