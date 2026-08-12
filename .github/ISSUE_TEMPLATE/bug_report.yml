@@ -1,30 +1,80 @@
 name: Bug report
-description: Report a reproducible controller or monitoring problem without secrets.
+description: Report a reproducible controller, deployment, or monitoring problem.
+title: "[Bug]: "
 body:
   - type: markdown
     attributes:
-      value: Never include passwords, private keys, public IP addresses, or hardware serial numbers.
-  - type: textarea
-    id: environment
+      value: |
+        Never include passwords, private keys, public IP addresses, hostnames, service tags, serial numbers, or unsanitized configuration. For vulnerabilities, use private reporting as described in SECURITY.md.
+  - type: input
+    id: revision
     attributes:
-      label: Environment
-      description: Dell model, iDRAC generation/firmware, OS, GPU, and systemd or Docker deployment.
+      label: Version or commit
+      description: Release tag, commit SHA, or Docker image identifier.
+    validations:
+      required: true
+  - type: input
+    id: dell
+    attributes:
+      label: Dell model and iDRAC
+      description: Exact model, iDRAC generation, and firmware version; write Not applicable if this is software-only.
+    validations:
+      required: true
+  - type: input
+    id: software
+    attributes:
+      label: OS, Python, and deployment
+      description: OS/version, Python version, and systemd, Docker Compose, or other method.
+    validations:
+      required: true
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU and sensor tools
+      description: GPU model, driver/tool version, lm-sensors details, or None.
+    validations:
+      required: true
+  - type: dropdown
+    id: control_mode
+    attributes:
+      label: Fan control mode
+      options:
+        - debug / dry run
+        - manual
+        - automatic
+        - not applicable
     validations:
       required: true
   - type: textarea
     id: behavior
     attributes:
       label: Observed and expected behavior
+      description: Include the actual fan/sensor state and what you expected.
     validations:
       required: true
   - type: textarea
     id: reproduction
     attributes:
       label: Reproduction steps
+      description: Provide the smallest reproducible sequence and a sanitized configuration excerpt.
     validations:
       required: true
+  - type: textarea
+    id: recovery
+    attributes:
+      label: Fail-safe and recovery result
+      description: State what happened after sensor failure, graceful stop, or restart, if relevant.
   - type: textarea
     id: logs
     attributes:
       label: Sanitized logs
-      description: Remove credentials, addresses, hostnames, serial numbers, and key paths.
+      description: Remove credentials, addresses, hostnames, serial numbers, service tags, and key paths.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Reporter checklist
+      options:
+        - label: I have removed secrets and identifying hardware/network data.
+          required: true
+        - label: I am not using a public issue to disclose a security vulnerability.
+          required: true

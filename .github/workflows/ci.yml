@@ -19,10 +19,25 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-      - run: python -m pip install --requirement requirements.txt
+      - run: python -m pip install --requirement requirements-dev.txt
       - run: python -m unittest discover -s tests -v
       - run: python -m compileall -q .
+      - run: python -m ruff check .
       - run: bash -n install.sh
+      - name: Verify rendered systemd unit
+        run: |
+          install_root="$RUNNER_TEMP/fan_control"
+          unit_path="$RUNNER_TEMP/fan-control.service"
+          mkdir -p "$install_root/venv/bin"
+          ln -s "$(command -v python)" "$install_root/venv/bin/python3"
+          cp main.py "$install_root/main.py"
+          sed "s#{TARGETDIR}#$install_root#g" fan-control.service > "$unit_path"
+          systemd-analyze verify "$unit_path"
+      - name: Build and smoke-test Docker image
+        run: |
+          docker build --tag dell-idrac-fan-controller-gpu:ci .
+          docker run --rm --entrypoint python dell-idrac-fan-controller-gpu:ci \
+            -c 'import main; print("startup-import-ok")'
 
   dependency-review:
     if: github.event_name == 'pull_request'

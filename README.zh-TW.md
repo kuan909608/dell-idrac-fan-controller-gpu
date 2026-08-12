@@ -2,120 +2,87 @@
 
 # Dell iDRAC 風扇控制器（支援 GPU）
 
-> 一套以溫度為基準的 Dell PowerEdge 伺服器風扇自動控制腳本。專案過去曾回報於 R730 使用，但每種機型、iDRAC 韌體、GPU 與部署組合都必須個別驗證；請參閱 [COMPATIBILITY.md](COMPATIBILITY.md)。
+[![CI](https://github.com/kuan909608/dell-idrac-fan-controller-gpu/actions/workflows/ci.yml/badge.svg)](https://github.com/kuan909608/dell-idrac-fan-controller-gpu/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/github/license/kuan909608/dell-idrac-fan-controller-gpu)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/kuan909608/dell-idrac-fan-controller-gpu?display_name=tag&sort=semver)](https://github.com/kuan909608/dell-idrac-fan-controller-gpu/releases)
+[![Python 3.11 | 3.13](https://img.shields.io/badge/Python-3.11%20%7C%203.13-3776AB?logo=python&logoColor=white)](.github/workflows/ci.yml)
 
-這個分支面向在 Dell PowerEdge、homelab 或 Proxmox 環境部署本地 AI 與其他 GPU 工作負載的使用者。它整合 CPU、NVIDIA/AMD GPU 與 VM 溫度，協助維護者觀察散熱狀態，並在原廠策略不適合非標準加速卡時使用可預期的風扇曲線。
+這是一套以溫度驅動的 Dell PowerEdge 風扇控制器，適合原廠散熱策略未能充分反映非標準加速器工作負載的環境。主要使用情境包括 Proxmox VE、homelab、本地 AI server 與其他 GPU 密集型系統，讓 CPU、主機 GPU 與 passthrough VM GPU 溫度共同影響同一條風扇曲線。
+
+控制器支援 CPU sensor、NVIDIA 與 AMD GPU sensor、透過 SSH 讀取 VM GPU、多主機、本機或遠端執行 IPMI、systemd、以遠端管理為主的 Docker 部署、唯讀 Web monitoring、sensor 遺失時的 fail-safe，以及經驗證的 runtime configuration reload。
 
 > [!CAUTION]
-> 本軟體會透過 raw IPMI 指令改變實體散熱狀態，並可能以 root 執行。它不能保證硬體安全。請在實際伺服器、iDRAC 韌體、GPU 與工作負載上驗證門檻，保留帶外監控，並測試服務關閉或故障時能恢復自動風扇控制。
+> 本軟體會傳送 raw IPMI 指令改變實體散熱狀態，並可能以 root 執行。它無法保證硬體安全或相容性。請在實際伺服器、iDRAC 韌體、GPU、sensor command 與持續負載上驗證，並保留獨立溫度告警及帶外管理能力。
 
-- [需求環境](#需求環境)
-- [專案結構](#專案結構)
-- [安裝／升級](#安裝升級)
-  - [Docker 部署](#docker-部署)
-- [設定說明](#設定說明)
-- [運作邏輯](#運作邏輯)
-- [唯讀 Web 監控](#唯讀-web-監控)
-- [安全性](#安全性)
-- [多主機與 VM 支援](#多主機與-vm-支援)
-- [遠端主機注意事項](#遠端主機注意事項)
-- [致謝](#致謝)
+## 使用情境
 
----
+- GPU passthrough 給 AI 或運算 VM 的 Proxmox VE 主機。
+- 加裝 GPU 後，原廠風扇反應未能充分反映 GPU 溫度的 Dell PowerEdge homelab。
+- 由單一控制器透過 SSH 監測多台伺服器與 VM，並於本機或遠端送出 IPMI 指令。
+- 需要 loopback-only 儀表板與 JSON 狀態端點，但不需要遠端控制 API 的環境。
 
-## 專案結構
+本專案不會由 Dell 產品家族推定硬體相容性。R730 僅有細節不完整的歷史 community report；目前沒有任何機型達到正式版本的 Verified 標準。證據分級請見 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
-```text
-.
-├── main.py                     # 程式入口與設定熱重載流程
-├── config_loader.py            # YAML 載入與驗證
-├── control_policy.py           # 溫度彙整與失效安全策略
-├── fan_controller.py           # Dell IPMI 風扇控制
-├── temp_monitor.py             # 本機與遠端感測資料收集
-├── monitoring_web.py           # 唯讀 TUI 風格儀表板與 JSON API
-├── lifecycle.py / state.py     # 關閉恢復與共用執行狀態
-├── fan_control_config.yaml.example
-├── Dockerfile / docker-compose.yml
-├── install.sh / fan-control.service
-├── tests/                       # 單元、安全、生命週期與封裝測試
-└── .github/                     # CI、Issue 表單與貢獻自動化
+## 運作方式
+
+控制器會依序讀取各主機的 CPU 溫度，以及所有已設定的主機／VM GPU。控制策略以最熱 CPU core 代表 CPU，再與每個 GPU 溫度合併，依設定選擇最大值（`max`）或這組數值的算術平均（`avg`）。風扇曲線將控制溫度對應為轉速，再由 `ipmitool` 傳送到 Dell iDRAC。
+
+```mermaid
+flowchart LR
+    CPU[CPU Sensor] --> AGG[Temperature Aggregation]
+    GPU[Host NVIDIA / AMD GPU Sensor] --> AGG
+    VM[VM GPU Sensor over SSH] --> AGG
+    AGG --> POLICY[Control Policy: max or avg]
+    CPU -. missing .-> SAFE[Fail-safe]
+    GPU -. configured source missing .-> SAFE
+    VM -. configured source missing .-> SAFE
+    SAFE --> CURVE[Fan Curve]
+    POLICY --> CURVE
+    CURVE --> IPMI[IPMI raw command]
+    IPMI --> IDRAC[Dell iDRAC fan control]
 ```
 
-本機設定、SSH 金鑰、虛擬環境、快取與瀏覽器測試產物不會納入 Git 或 Docker 映像。
+CPU 資料遺失，或任何已設定的 GPU 來源失敗時，會啟動 fail-safe sentinel，因此落到風扇曲線最後一個（最高設定）轉速。該值不一定是 100%；請據此設定最後一段速度。精確行為與 recovery 限制請見 [ARCHITECTURE.md](ARCHITECTURE.md)。
 
-## 需求環境
+## 環境需求
 
-1. 已安裝 Python 3。
-2. 所有 iDRAC 已啟用 **IPMI Over LAN**（登入 iDRAC > Network/Security > IPMI Settings）。
-   - 僅管理本機時可不啟用。
-3. 所有需要被監測溫度的主機，請依需求安裝對應的感測工具：
+- Linux 與 Python 3.11 或 3.13（CI 實際測試的版本）。
+- 在執行 IPMI 指令的位置可使用 `ipmitool`。
+- 預設 CPU 指令需要 `lm-sensors`／`sensors`。
+- 對應 GPU 被讀取的位置需要 `nvidia-smi` 與／或 `rocm-smi`。
+- 使用 `ipmi_credentials` 時，iDRAC 必須啟用 IPMI over LAN。
+- 遠端主機與 VM 需要 SSH known-host 記錄，以及 key 或 password。
 
-   - 監測本機 CPU：需安裝並設定 `lm-sensors`
-   - 監測 NVIDIA GPU：需安裝 `nvidia-smi`
-   - 監測 AMD GPU：需安裝 `rocm-smi`
+Sensor command 是由管理者提供的 shell pipeline，輸出必須是以分號分隔的數字，例如 `42;47;55`。未知 SSH host key 會被拒絕。
 
-   - 雙 CPU 範例輸出：
+## 使用 systemd 安裝
 
-     ```text
-     coretemp-isa-0000
-     Adapter: ISA adapter
-     Core 0:       +38.0°C  (high = +69.0°C, crit = +79.0°C)
-     Core 1:       +46.0°C  (high = +69.0°C, crit = +79.0°C)
-     Core 2:       +40.0°C  (high = +69.0°C, crit = +79.0°C)
-     Core 8:       +43.0°C  (high = +69.0°C, crit = +79.0°C)
-     Core 9:       +39.0°C  (high = +69.0°C, crit = +79.0°C)
-     Core 10:      +39.0°C  (high = +69.0°C, crit = +79.0°C)
-
-     coretemp-isa-0001
-     Adapter: ISA adapter
-     Core 0:       +29.0°C  (high = +69.0°C, crit = +79.0°C)
-     Core 1:       +35.0°C  (high = +69.0°C, crit = +79.0°C)
-     Core 2:       +29.0°C  (high = +69.0°C, crit = +79.0°C)
-     Core 8:       +34.0°C  (high = +69.0°C, crit = +79.0°C)
-     Core 9:       +33.0°C  (high = +69.0°C, crit = +79.0°C)
-     Core 10:      +31.0°C  (high = +69.0°C, crit = +79.0°C)
-     ```
-
-## 安裝／升級
-
-請以 root 權限執行安裝腳本：
+控制器需直接讀取伺服器本機 sensor 時，建議使用此方式。請從 repository checkout 執行：
 
 ```bash
 git clone https://github.com/kuan909608/dell-idrac-fan-controller-gpu.git
 cd dell-idrac-fan-controller-gpu
-sudo ./install.sh [<安裝路徑>]
+sudo ./install.sh
+sudo systemctl status fan-control
 ```
 
-預設安裝路徑為 `/opt/fan_control`，服務名稱為 `fan-control.service`。既有的 `fan_control_config.yaml` 會原樣保留；編輯或升級前請自行備份。
+預設安裝路徑是 `/opt/fan_control`；如需修改，可將其他絕對路徑作為第一個參數。Installer 會建立 `fan-control.service`、保留既有 `fan_control_config.yaml` 並重新啟動服務。啟用手動控制前，請先檢查產生的設定檔。
 
-### Docker 部署
+常用操作：
 
-如需以 Docker 管理遠端主機，請自行掛載 YAML 設定檔與 SSH 金鑰資料夾：
+```bash
+sudo journalctl -u fan-control -f
+sudo systemctl restart fan-control
+sudo systemctl stop fan-control
+```
+
+## 使用 Docker 安裝
+
+內附 image 以遠端管理為目標：它包含 `ipmitool`，但不包含主機 CPU/GPU sensor 套件與裝置存取。請勿假設只掛載 `/dev` 或 `/sys` 就能讀取本機 sensor。
 
 ```bash
 git clone https://github.com/kuan909608/dell-idrac-fan-controller-gpu.git
 cd dell-idrac-fan-controller-gpu
-mkdir -p config
-cp fan_control_config.yaml.example config/fan_control_config.yaml
-chmod 600 config/fan_control_config.yaml
-docker build -t fan_control .
-docker run -d --restart=always --name fan_control \
-  -p 127.0.0.1:8080:8080 \
-  -v "./config:/config:ro" \
-  -v "./keys:/app/keys:ro" \
-  -v "$HOME/.ssh/known_hosts:/root/.ssh/known_hosts:ro" \
-  fan_control
-```
-
-若要在 Docker 使用 Web 監控，容器內設定需使用 `general.web_host: 0.0.0.0`。上述 `-p 127.0.0.1:8080:8080` 仍只允許 Docker 主機本機存取；遠端查看請使用文件中的 SSH tunnel。
-
-控制器會在下一個控制週期前偵測 `fan_control_config.yaml` 的變更。新檔案必須完整通過驗證才會套用；無效設定會被拒絕，並繼續使用上一份有效設定。重新載入手動控制設定時，程式會先恢復 Dell automatic 模式，再套用驗證完成的新設定。Docker 必須依照上例掛載整個設定目錄，才能讓編輯器以原子取代方式儲存的 YAML 在容器內保持可見。
-
-#### Docker Compose
-
-內附的 `docker-compose.yml` 使用相同的 loopback-only 儀表板、可熱重載設定目錄、SSH keys 與已驗證的 `known_hosts` 掛載：
-
-```bash
 mkdir -p config keys
 cp fan_control_config.yaml.example config/fan_control_config.yaml
 chmod 600 config/fan_control_config.yaml
@@ -124,236 +91,96 @@ docker compose up -d --build
 docker compose logs -f
 ```
 
-請使用 `docker compose down` 正常停止服務。Compose 會保留 30 秒讓控制器恢復 Dell automatic 風扇模式。請勿同時執行控制同一台伺服器的 systemd 或獨立 Docker 部署。
+Compose 會掛載設定目錄、`keys/` 與操作者的 `known_hosts`，並只將儀表板發布於 `127.0.0.1:8080`。容器內需設定 `general.web_host: 0.0.0.0`，loopback-published port 才能連入。請使用 `docker compose down` 正常停止。
 
-建議於正式環境搭配 Orchestrator 使用。
+等效的 standalone 指令如下：
 
----
-
-### 部屬方式選擇指南
-
-本工具支援兩種部屬方式：systemd（裸機）與 Docker。**同一台主機請僅選擇一種方式，不可同時啟用。**
-
-#### 何時選擇 systemd（裸機）
-
-- 需要直接存取本機硬體感測器（如 lm-sensors）時建議使用。
-- 適合希望服務隨作業系統自動啟動並由 systemd 管理的環境。
-- `install.sh` 會自動安裝依賴、建立 venv、複製檔案並設定 systemd 服務。
-
-#### 何時選擇 Docker
-
-- 僅需遠端管理，或希望隔離執行環境、方便移植時建議使用。
-- 若需在 Docker 內存取本機硬體感測器，必須額外掛載系統目錄，例如：
-  ```bash
-  docker run ... -v /dev:/dev -v /sys:/sys ...
-  ```
-- 請務必掛載設定檔與 SSH 金鑰資料夾（如上方範例）。
-- 正式環境建議搭配 Orchestrator 增加可靠性。
-
-#### 注意事項
-
-- **請勿同時啟用 systemd 服務與 Docker container，否則可能產生衝突或資源競爭。**
-- `install.sh` 會覆蓋現有檔案與 systemd 服務，執行前請先備份設定。
-- Docker 內使用 SSH 金鑰時，請注意權限與安全性管理。
-
-## 設定說明
-
-請編輯安裝目錄下的 `fan_control_config.yaml` 進行設定。
-
-儲存後會在下一個控制週期前自動載入，不必重新啟動程序或容器。無效設定會被拒絕，並繼續使用上一份有效設定。
-
-### 設定檔結構
-
-- `general`：全域參數
-- `hosts`：主機清單，每台主機可自訂溫度門檻、風速、認證資訊、GPU 類型與 VM
-
-#### general 區塊
-
-| 參數名稱                         | 說明                                                   |
-| -------------------------------- | ------------------------------------------------------ |
-| `debug`                          | 除錯模式（僅顯示指令不執行，並輸出詳細日誌）           |
-| `interval`                       | 每次溫度檢查與風扇調整的間隔秒數                       |
-| `temperature_control_mode`       | 風扇控制依據，`max` 代表取最高溫，`avg` 代表取平均溫度 |
-| `web_enabled`                    | 是否啟用唯讀監控頁面                                 |
-| `web_host`                       | 監控服務綁定位址，預設 `127.0.0.1`                   |
-| `web_port`                       | 監控服務 TCP port，預設 `8080`                       |
-| `web_refresh_interval`           | 儀表板自動刷新秒數，預設 `3`（範圍：1–3600）        |
-| `cpu_temperature_command`        | 取得 CPU 溫度的 shell 指令（以分號分隔）               |
-| `gpu_temperature_command_nvidia` | 取得 NVIDIA GPU 溫度的 shell 指令（以分號分隔）        |
-| `gpu_temperature_command_amd`    | 取得 AMD GPU 溫度的 shell 指令（以分號分隔）           |
-
-#### hosts 區塊
-
-| 參數名稱           | 說明                                                                                          |
-| ------------------ | --------------------------------------------------------------------------------------------- |
-| `name`             | 主機名稱                                                                                      |
-| `fan_control_mode` | 風扇控制模式，`manual` 由腳本控制，`automatic` 由硬體自動控制                                 |
-| `temperatures`     | 溫度門檻（°C），需與 speeds 成對，**必須至少 2 組**，數量不限                                 |
-| `speeds`           | 對應風扇轉速（%），需與 temperatures 成對，**必須至少 2 組**，數量不限                        |
-| `hysteresis`       | 遲滯值，避免頻繁切換風速（°C），建議小於任兩組相鄰溫度門檻的差值                              |
-| `ipmi_credentials` | （選填）本機 IPMI 登入資訊                                                                    |
-| `ssh_credentials`  | （選填）SSH 登入資訊；需要 `host`、`username`，並提供 `password` 或 `key_path` 其中之一；未知 host key 會被拒絕 |
-| `gpu_type`         | （選填）支援的 GPU 類型，可為字串（如 `nvidia`）或陣列（如 `[nvidia, amd]`）                  |
-| `vms`              | （選填）VM 清單，每台 VM 可自訂 SSH 認證與 GPU 類型，詳見下方 vms 物件說明                    |
-
-##### vms 物件
-
-每個 VM 物件支援以下欄位：
-
-| 欄位名稱          | 說明                                                                                   |
-| ----------------- | -------------------------------------------------------------------------------------- |
-| `name`            | VM 名稱                                                                                |
-| `ssh_credentials` | VM 的 SSH 登入資訊；需要 `host`、`username`，並提供 `password` 或 `key_path` 其中之一 |
-| `gpu_type`        | 支援的 GPU 類型，可為字串（如 `nvidia`）或陣列（如 `[nvidia, amd]`）                   |
-
-##### 自動分割溫度門檻與風速
-
-若只設定 2 組 `temperatures` 與 `speeds`（如 `[40, 80]` 與 `[20, 80]`），系統會依據 `hysteresis` 自動分割成多組門檻與風速。
-
-分割邏輯：
-
-- 以 `hysteresis * 2` 為間距，從最低溫到最高溫自動切分。
-- 每個區間都會產生一組新的門檻與對應風速，讓風扇轉速調整更平滑。
-
-**範例：**
-
-```yaml
-temperatures: [40, 80]
-speeds: [20, 80]
-hysteresis: 5
+```bash
+docker build -t dell-idrac-fan-controller-gpu:local .
+docker run -d --name fan_control --restart unless-stopped --init --stop-timeout 30 \
+  -p 127.0.0.1:8080:8080 \
+  -v "./config:/config:ro" \
+  -v "./keys:/app/keys:ro" \
+  -v "$HOME/.ssh/known_hosts:/root/.ssh/known_hosts:ro" \
+  dell-idrac-fan-controller-gpu:local
 ```
 
-會自動展開為：
+同一台伺服器只能由一個 controller 管理。同時執行 systemd、Docker 或 standalone process，可能互相覆寫風扇模式與速度。
 
-```
-thresholds: [40.00, 50.00, 60.00, 70.00, 80.00]
-speeds: [20, 35, 50, 65, 80]
-```
+## 設定
 
-##### 範例
+複製 [fan_control_config.yaml.example](fan_control_config.yaml.example)，並替換所有範例地址與憑證。範例預設為 `debug: true`；請先確認所有 sensor 與 planned IPMI 輸出，再改成 `false`。主要設定如下：
 
-```yaml
-general:
-  debug: False
-  interval: 60
-  cpu_temperature_command: "sensors | grep -E 'Core [0-9]+:' | awk '{print $3}' | sed 's/+//;s/°C//' | paste -sd ';' -"
-  gpu_temperature_command_nvidia: "nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits | paste -sd ';' -"
-  gpu_temperature_command_amd: "rocm-smi --showtemp | grep -E 'Temp' | awk '{print \$2}' | sed 's/[^0-9.]//g' | paste -sd ';' -"
+| 參數 | 意義 |
+| --- | --- |
+| `general.debug` | Dry-run IPMI 變更並增加 log；sensor command 仍會執行。 |
+| `general.interval` | 控制週期秒數，必須大於零。 |
+| `general.temperature_control_mode` | `max` 或 `avg`；彙整定義如上。 |
+| `general.web_enabled` | 啟用唯讀 dashboard 與 JSON endpoint。 |
+| `general.web_host`, `web_port` | Bind address 與 port；預設為 `127.0.0.1:8080`。 |
+| `general.web_refresh_interval` | Dashboard 更新週期，範圍 1–3600 秒。 |
+| `*_temperature_command` | 受信任、回傳分號分隔溫度的 shell command。 |
+| `hosts[].fan_control_mode` | `manual` 由程式控制；`automatic` 由 Dell 控制。 |
+| `hosts[].temperatures`, `speeds` | 至少兩個、數量相同且遞增的清單；速度為 0–100。 |
+| `hosts[].hysteresis` | 目前風扇曲線計算使用的非負門檻容許區間。 |
+| `hosts[].ipmi_credentials` | 選填的 iDRAC host、username 與 password。 |
+| `hosts[].ssh_credentials` | 選填的執行主機、username，以及 password 或 `key_path`。 |
+| `hosts[].gpu_type` | 選填 `nvidia`、`amd`，或包含兩者的 list。 |
+| `hosts[].vms` | 選填 VM 名稱、SSH credentials 與必要的 GPU type。 |
 
-hosts:
-  - name: host1
-    temperatures: [40, 60, 80]
-    speeds: [20, 50, 80]
-    hysteresis: 5
-    ipmi_credentials:
-      host: 10.0.0.1
-      username: admin
-      # 密碼登入範例
-      password: password
-      # 金鑰登入範例（建議將私鑰檔案放在 keys/ 資料夾下）
-      # key_path: /app/keys/id_rsa
-    ssh_credentials:
-      host: 10.0.0.2
-      username: admin
-      password: password
-    gpu_type: nvidia
-    vms:
-      - name: vm1
-        ssh_credentials:
-          host: 10.0.0.3
-          username: user
-          password: password
-        gpu_type: nvidia
-  - name: host2
-    temperatures: [35, 55, 75]
-    speeds: [30, 60, 90]
-    hysteresis: 5
-    gpu_type: nvidia
-```
+若只提供兩個 threshold 與 speed，且 hysteresis 大於零，loader 會產生中間點。例如 `[40, 80]`、`[20, 80]` 與 hysteresis `5` 會變成 thresholds `[40, 50, 60, 70, 80]`、speeds `[20, 35, 50, 65, 80]`。
 
-##### 自動分割溫度門檻與風速
+每次控制週期前都會檢查設定檔。變更後的檔案必須完整通過驗證；無效變更會被拒絕，並保留上一份有效設定。套用有效設定前，所有原本為 `manual` 的主機都必須成功恢復 Dell automatic mode。Web bind 與 refresh 設定也會一起 reload。
 
-若只設定 2 組 `temperatures` 與 `speeds`（如 `[40, 80]` 與 `[20, 80]`），系統會依據 `hysteresis` 自動分割成多組門檻與風速。
+## Web monitoring
 
-分割邏輯：
+內建服務提供 `GET /` 與 `GET /api/status`，顯示 host/VM sensor health、CPU/GPU 溫度、控制溫度、script/iDRAC/dry-run 狀態、最近下達的 fan speed 與更新時間。修改方法回傳 `405`，輸出不包含 credentials。
 
-- 以 `hysteresis * 2` 為間距，從最低溫到最高溫自動切分。
-- 每個區間都會產生一組新的門檻與對應風速，讓風扇轉速調整更平滑。
-
-**範例：**
-
-```yaml
-temperatures: [40, 80]
-speeds: [20, 80]
-hysteresis: 5
-```
-
-會自動展開為：
-
-```
-thresholds: [40.00, 50.00, 60.00, 70.00, 80.00]
-speeds: [20, 35, 50, 65, 80]
-```
-
-## 運作邏輯
-
-每隔 `interval` 秒，腳本會取得所有主機及其 VM 的 CPU/GPU 溫度。  
-以所有 CPU/GPU（含 VM）最高溫度作為控制依據，決定風扇轉速。
-
-- 若溫度資料異常，風扇將以設定中的最高速（speeds 最後一個值）運轉以保護硬體。
-- 風扇轉速依據每組門檻與對應百分比自動切換，超過最高門檻時風扇會固定在最高速（設定中的最大百分比）。
-- 所有溫度與控制紀錄皆會寫入狀態，方便日後追蹤與除錯。
-
-| 條件                             | 風扇轉速             |
-| -------------------------------- | -------------------- |
-| _Tmax_ ≤ Threshold1              | Speed1               |
-| Threshold1 < _Tmax_ ≤ Threshold2 | Speed2               |
-| ...                              | ...                  |
-| _Tmax_ > ThresholdN              | 最高速（最大百分比） |
-
-若有設定 `hysteresis`，當溫度下降時，必須低於該門檻值減去 hysteresis 才會降低風扇轉速。  
-例如：Threshold2 設為 37°C，hysteresis 設為 3°C，則風扇不會從 Threshold3 轉速降到 Threshold2，直到溫度降到 34°C。
-
-## 唯讀 Web 監控
-
-控制器內建簡潔的 TUI 風格頁面與 JSON 狀態端點，可查看 CPU/GPU 溫度、VM GPU 來源、控制溫度、風扇模式與轉速、sensor 狀態、錯誤及最後更新時間。
-
-```yaml
-general:
-  web_enabled: true
-  web_host: 127.0.0.1
-  web_port: 8080
-  web_refresh_interval: 3
-```
-
-在控制器主機開啟 `http://127.0.0.1:8080/`；`GET /api/status` 會傳回相同的唯讀 JSON 狀態。所有修改方法都會被拒絕，輸出也不包含憑證。
-
-修改 `web_refresh_interval` 後會自動偵測；已開啟的儀表板會在下一次取得狀態時套用新週期，不必重新整理頁面。
-
-遠端查看時，建議維持 loopback 綁定並使用 SSH tunnel：
+請保留預設 loopback binding，遠端查看時使用 tunnel：
 
 ```bash
 ssh -L 8080:127.0.0.1:8080 operator@controller-host
 ```
 
-請勿把內建伺服器直接暴露在不受信任的網路。如需多人存取，應置於具有驗證與 TLS 的 reverse proxy 後方。
+Web service 不提供 authentication 或 TLS，請勿直接暴露於不受信任的網路。
 
-## 安全性
+## 安全與恢復
 
-本專案跨越高權限 Shell、SSH、IPMI、憑證、dependency 與實體散熱邊界。未知 SSH host key 預設會被拒絕；IPMI 密碼透過 standard input 傳遞，不放在 process arguments；debug 設定輸出會遮蔽敏感欄位。管理者設定的 sensor command 仍屬受信任的 Shell 輸入，不應直接複製不可信來源提供的指令。
+- 最後一段 speed 應足以應付最嚴苛的預期負載；fail-safe 使用此值，不會無條件送出 100%。
+- 正常關閉、`SIGTERM` 與接受設定 reload 時，會嘗試將每台設定為 `manual` 的主機恢復 Dell automatic fan mode。
+- Recovery 是 best-effort。斷電、`SIGKILL`、process/runtime failure、網路中斷、錯誤 credentials 或 iDRAC 無法連線，都可能讓最後的 manual 設定繼續生效。
+- 無人值守前，請測試 sensor loss、graceful shutdown、controller host reboot 與 iDRAC reachability，並直接由 iDRAC 確認結果，不要只看 dashboard。
+- IPMI/SSH credentials 應放在 mode `0600` 的設定檔，優先使用受限制的 SSH key，且不可 commit secret。Root execution 與可信任 shell sensor command 會放大設定遭竄改時的影響。
 
-安全問題請依 [SECURITY.md](SECURITY.md) 使用 GitHub 私密漏洞回報，請勿在 issue 或 log 中放入真實密碼、private key、公網 IP 或可識別硬體的資料。
+部署前請完整閱讀 [Security Policy](SECURITY.md) 與 [硬體相容性標準](COMPATIBILITY.md)。
 
-已驗證與待補證據的硬體組合記錄於 [COMPATIBILITY.md](COMPATIBILITY.md)。
+## 與 upstream 的關係
 
-## 遠端主機注意事項
+本 repository 源自 [nmaggioni/r710-fan-controller](https://github.com/nmaggioni/r710-fan-controller)。Upstream 建立了 CPU-core-based IPMI 風扇控制方法、遠端／多主機操作、設定及 shutdown recovery，成為本專案持續發展的基礎。
 
-本控制器也能監控遠端主機的溫度並調整風扇轉速：唯一需要注意的是，必須透過外部指令取得溫度資料，例如 SSH。控制器預期該指令回傳**可被解析為浮點數的分號分隔數字清單**。
+這個 fork 後續針對 GPU、虛擬化、多主機與現代部署情境持續演進，主要新增與重新設計包括：
 
-**內建範例適用於遠端 Proxmox VE 主機**：會透過 SSH 連線並取得所有 CPU core 的溫度，每行一個數字。這樣就能像管理本機一樣管理該主機，無需對作業系統做難以追蹤的修改。
+- 主機與 VM 的 NVIDIA／AMD GPU 收集，以及 CPU/GPU 組合策略；
+- 明確的 sensor 遺失 fail-safe 判定及可觀測 runtime health；
+- 模組化的設定、sensor、policy、IPMI、lifecycle、state 與 Web 元件；
+- 唯讀 dashboard 與 JSON monitoring endpoint；
+- 經驗證的 runtime configuration 與 Web setting reload；
+- 更安全的 IPMI password 傳遞、SSH host-key verification 與 debug redaction；
+- 強化的 systemd packaging、remote-oriented Docker/Compose、CI 與 regression tests。
 
-## 致謝
+這些差異代表使用範圍不同，不是對 upstream 的批評。歷史 Credits 與原始 MIT copyright attribution 均完整保留。
 
-特別感謝 [NoLooseEnds 的指引](https://github.com/NoLooseEnds/Scripts/tree/master/R710-IPMI-TEMP) 提供核心指令、[sulaweyo 的 ruby 腳本](https://github.com/sulaweyo/r710-fan-control) 提供自動化靈感，以及本專案 fork 自 [nmaggioni 的 r710-fan-controller](https://github.com/nmaggioni/r710-fan-controller)。
+## 專案治理
 
-**注意：** 本腳本與其他方案的主要差異（除了支援遠端主機外），在於它是根據 CPU core 溫度控制，而非主機板上的環境溫度感測器。
+- 變更與重要歷史：[CHANGELOG.md](CHANGELOG.md)
+- 第一版 Release Notes 草稿：[RELEASE_NOTES.md](RELEASE_NOTES.md)
+- 貢獻指南：[CONTRIBUTING.md](CONTRIBUTING.md)
+- Release 流程：[RELEASING.md](RELEASING.md)
+- 安全回報：[SECURITY.md](SECURITY.md)
+- 相容性回報：[COMPATIBILITY.md](COMPATIBILITY.md)
+
+## 致謝與授權
+
+感謝 [NoLooseEnds](https://github.com/NoLooseEnds/Scripts/tree/master/R710-IPMI-TEMP) 提供核心 IPMI 指引、[sulaweyo/r710-fan-control](https://github.com/sulaweyo/r710-fan-control) 提供自動化靈感，尤其感謝本 repository 的來源 [Niccolò Maggioni 的 r710-fan-controller](https://github.com/nmaggioni/r710-fan-controller)。
+
+本專案採用 [MIT License](LICENSE)，並保留 `Copyright (c) 2019 Niccolò Maggioni`。

@@ -1,40 +1,92 @@
 name: Hardware compatibility report
-description: Share a verified, de-identified deployment result.
+description: Share a de-identified physical deployment result for evidence review.
+title: "[Hardware]: Dell PowerEdge "
 body:
+  - type: markdown
+    attributes:
+      value: |
+        A report is evidence, not an automatic Verified designation. Never include service tags, serial numbers, credentials, private keys, hostnames, or public IP addresses.
+  - type: input
+    id: revision
+    attributes:
+      label: Project version or commit
+      description: Release tag or exact commit SHA tested.
+    validations:
+      required: true
   - type: input
     id: model
     attributes:
       label: Dell model
+      placeholder: PowerEdge R730
     validations:
       required: true
   - type: input
     id: idrac
     attributes:
       label: iDRAC generation and firmware
+      placeholder: iDRAC 8, firmware x.y.z
     validations:
       required: true
   - type: input
     id: os
     attributes:
-      label: Operating system
+      label: Operating system and Python
+      description: Include OS edition/version and Python version.
     validations:
       required: true
   - type: input
     id: gpu
     attributes:
-      label: GPU model and driver family
+      label: GPU, driver, and sensor tool
+      description: Exact GPU model, driver/tool version, or None if tested CPU-only.
     validations:
       required: true
   - type: dropdown
     id: deployment
     attributes:
-      label: Deployment
-      options: [systemd, Docker]
+      label: Deployment method
+      options:
+        - systemd installer
+        - Docker Compose
+        - standalone Docker
+        - direct Python
+        - other
     validations:
       required: true
   - type: textarea
-    id: result
+    id: topology
     attributes:
-      label: Verified result and limitations
+      label: Sensor and IPMI topology
+      description: State which commands ran locally or over SSH, whether GPUs were on the host or VMs, and whether IPMI used LANPlus or a local interface.
     validations:
       required: true
+  - type: checkboxes
+    id: tests
+    attributes:
+      label: Tests completed
+      description: Select only tests actually performed and explain results below.
+      options:
+        - label: CPU temperature collection under sustained load
+        - label: Host GPU temperature collection under sustained load
+        - label: VM GPU temperature collection under sustained load
+        - label: Manual mode and multiple fan-curve steps
+        - label: Missing CPU sensor fail-safe
+        - label: Missing configured GPU sensor fail-safe
+        - label: Graceful shutdown automatic-mode recovery
+        - label: Controller-host restart recovery check
+  - type: textarea
+    id: result
+    attributes:
+      label: Test results and limitations
+      description: Record temperatures, commanded speeds, iDRAC-observed mode/recovery, duration, failures, and all untested paths. Do not include identifying data.
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Reporter confirmation
+      options:
+        - label: I tested this on physical hardware and distinguished observed results from expectations.
+          required: true
+        - label: I removed credentials and identifying hardware/network data.
+          required: true
