@@ -2,13 +2,20 @@
 
 # Dell iDRAC Fan Controller with GPU Support
 
-> A temperature-based fan speed controller for Dell PowerEdge servers (tested on an R730, should work with most PowerEdges). Supports both local and remote hosts.
+> A temperature-based fan speed controller for Dell PowerEdge servers. The project was historically reported on an R730, but every model, iDRAC firmware, GPU, and deployment combination requires independent verification; see [COMPATIBILITY.md](COMPATIBILITY.md).
+
+This fork is designed for homelab and Proxmox users running local AI or other GPU workloads on Dell PowerEdge hardware. It combines CPU, NVIDIA/AMD GPU, and VM temperature signals so operators can observe thermal health and apply predictable fan curves when vendor defaults are unsuitable for nonstandard accelerators.
+
+> [!CAUTION]
+> This software changes physical cooling through raw IPMI commands and may run as root. It cannot guarantee hardware safety. Validate thresholds on your exact server, iDRAC firmware, GPU, and workload; retain out-of-band monitoring; and verify automatic fan restoration during shutdown and failure tests.
 
 - [Requisites](#requisites)
 - [Installation / Upgrade](#installation--upgrade)
   - [Docker](#docker)
 - [Configuration](#configuration)
 - [How it works](#how-it-works)
+- [Read-only Web monitoring](#read-only-web-monitoring)
+- [Security](#security)
 - [Notes on remote hosts](#notes-on-remote-hosts)
 - [Credits](#credits)
 
@@ -57,7 +64,7 @@ cd dell-idrac-fan-controller-gpu
 sudo ./install.sh [<installation path>]
 ```
 
-The default installation path is `/opt/fan_control` and the service will be installed as `fan-control.service`. If a configuration file already exists, it will be renamed with a `.old` extension.
+The default installation path is `/opt/fan_control` and the service will be installed as `fan-control.service`. An existing `fan_control_config.yaml` is preserved unchanged; back it up before editing or upgrading.
 
 ### Docker
 
@@ -67,8 +74,15 @@ To deploy remote fan management with Docker (`fan_control` running on a separate
 git clone https://github.com/kuan909608/dell-idrac-fan-controller-gpu.git
 cd dell-idrac-fan-controller-gpu
 docker build -t fan_control .
-docker run -d --restart=always --name fan_control -v "./fan_control_config.yaml:/app/fan_control_config.yaml:ro" -v "./keys:/app/keys:ro" fan_control
+docker run -d --restart=always --name fan_control \
+  -p 127.0.0.1:8080:8080 \
+  -v "./fan_control_config.yaml:/app/fan_control_config.yaml:ro" \
+  -v "./keys:/app/keys:ro" \
+  -v "$HOME/.ssh/known_hosts:/root/.ssh/known_hosts:ro" \
+  fan_control
 ```
+
+For Docker Web monitoring, set `general.web_host: 0.0.0.0` inside the container. The `-p 127.0.0.1:8080:8080` mapping above still restricts access to the Docker host; use the documented SSH tunnel for remote viewing.
 
 Running this tool under a proper orchestrator is advised.
 
@@ -115,6 +129,9 @@ The configuration file contains two main sections: `general` and `hosts`.
 | `debug`                          | Toggle debug mode (print ipmitool commands instead of executing them, enable additional logging). |
 | `interval`                       | How often (in seconds) to read the CPUs' and GPUs' temperatures and adjust the fans' speeds.      |
 | `temperature_control_mode`       | Use `max` or `avg` to decide if fan control is based on the maximum or average temperature.       |
+| `web_enabled`                    | Enable the read-only monitoring dashboard.                                                        |
+| `web_host`                       | Monitoring bind address; defaults to `127.0.0.1`.                                                 |
+| `web_port`                       | Monitoring TCP port; defaults to `8080`.                                                          |
 | `cpu_temperature_command`        | Shell command to get CPU temperatures (semicolon separated).                                      |
 | `gpu_temperature_command_nvidia` | Shell command to get NVIDIA GPU temperatures (semicolon separated).                               |
 | `gpu_temperature_command_amd`    | Shell command to get AMD GPU temperatures (semicolon separated).                                  |
@@ -131,7 +148,7 @@ Each host object supports the following keys:
 | `speeds`           | List of fan speeds (in %) for each threshold. **Must have at least 2 values.**                                                        |
 | `hysteresis`       | Hysteresis value in °C to prevent rapid fan speed changes.                                                                            |
 | `ipmi_credentials` | (Optional) IPMI login info for this host.                                                                                             |
-| `ssh_credentials`  | (Optional) SSH login info for this host. Supports `host`, `username`, `password`, and optional `key_path` for SSH key authentication. |
+| `ssh_credentials`  | (Optional) SSH login info. Requires `host`, `username`, and either `password` or `key_path`. Unknown host keys are rejected. |
 | `gpu_type`         | (Optional) Supported GPU types, can be a string (e.g., `nvidia`) or an array (e.g., `[nvidia, amd]`).                                 |
 | `vms`              | (Optional) List of VM objects. See below for VM object structure.                                                                     |
 
@@ -142,7 +159,7 @@ Each VM object supports the following keys:
 | Key               | Description                                                                                                             |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `name`            | VM name identifier.                                                                                                     |
-| `ssh_credentials` | SSH login info for the VM. Supports `host`, `username`, `password`, and optional `key_path` for SSH key authentication. |
+| `ssh_credentials` | SSH login info for the VM. Requires `host`, `username`, and either `password` or `key_path`. |
 | `gpu_type`        | Supported GPU types for the VM, can be a string (e.g., `nvidia`) or an array (e.g., `[nvidia, amd]`).                   |
 
 ### Auto-splitting thresholds and speeds
@@ -274,9 +291,38 @@ Fan speed is determined by each temperature threshold and its corresponding spee
 If `hysteresis` is set for a given host, the controller will wait for the temperature to go below _ThresholdN - hysteresis_ before lowering the fan speed.  
 For example: with a Threshold2 of 37°C and a hysteresis of 3°C, the fans won't slow down from Threshold3 to Threshold2 speed until the temperature reaches 34°C.
 
+## Read-only Web monitoring
+
+The controller includes a small TUI-style dashboard and JSON status endpoint. It shows CPU/GPU temperatures, VM GPU sources, control temperature, fan mode/speed, sensor status, errors, and the last update time.
+
+```yaml
+general:
+  web_enabled: true
+  web_host: 127.0.0.1
+  web_port: 8080
+```
+
+Open `http://127.0.0.1:8080/` on the controller host. `GET /api/status` returns the same read-only status as JSON. All mutation methods are rejected, and credentials are excluded from the schema.
+
+For remote viewing, keep the loopback binding and use an SSH tunnel:
+
+```bash
+ssh -L 8080:127.0.0.1:8080 operator@controller-host
+```
+
+Do not expose the built-in server directly to an untrusted network. Put it behind an authenticated TLS reverse proxy if shared access is required.
+
+## Security
+
+This project crosses privileged shell, SSH, IPMI, credential, dependency, and physical-cooling boundaries. Unknown SSH host keys are rejected, IPMI passwords are passed through standard input rather than process arguments, and debug configuration output is redacted. Administrator-configured sensor commands remain trusted shell input and must not be copied from untrusted sources.
+
+Report vulnerabilities through GitHub private vulnerability reporting as described in [SECURITY.md](SECURITY.md). Never include real credentials, private keys, public IP addresses, or identifying hardware data in issues or logs.
+
+Verified and pending hardware reports are tracked in [COMPATIBILITY.md](COMPATIBILITY.md).
+
 ## Notes on remote hosts
 
-This controller can monitor the temperature and change the fan speed of remote hosts too: the only caveat is that you'll need to extract the temperatures via an external command. This could be via SSH, for example. The controller expects such a command to return **a newline-delimited list of numbers parseable as floats**.
+This controller can monitor the temperature and change the fan speed of remote hosts too: the only caveat is that you'll need to extract the temperatures via an external command. This could be via SSH, for example. The controller expects such a command to return **a semicolon-delimited list of numbers parseable as floats**.
 
 **The included example is a good fit for a remote Proxmox VE host**: it will connect to it via SSH and extract the temperature of all CPU cores, one per line. This way you'll be able to manage that machine just as well as the local one without applying any hardly trackable modification to the base OS.
 

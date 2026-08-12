@@ -6,6 +6,9 @@ general:
   debug: false  # Enable debug mode
   interval: 60  # Monitoring interval in seconds
   temperature_control_mode: avg # Choose max or avg, determines fan control basis
+  web_enabled: true  # Read-only monitoring dashboard
+  web_host: 127.0.0.1  # Loopback-only by default
+  web_port: 8080
   cpu_temperature_command: 'sensors | grep -E "Core [0-9]+:" | awk ''{print $3}'' | sed ''s/+//;s/°C//'' | paste -sd '';'' -'  # Command to get CPU temperature
   gpu_temperature_command_nvidia: 'nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits | paste -sd '';'' -'  # Command to get NVIDIA GPU temperature
   gpu_temperature_command_amd: 'rocm-smi --showtemp | grep -E "Temp" | awk ''{print $2}'' | sed ''s/[^0-9.]//g'' | paste -sd '';'' -'  # Command to get AMD GPU temperature

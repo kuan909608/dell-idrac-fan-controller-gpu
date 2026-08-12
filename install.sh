@@ -8,7 +8,7 @@ if [[ "$(whoami)" != "root" ]]; then
 fi
 
 TARGETDIR="/opt/fan_control"
-if [ ! -z "$1" ]; then
+if [ -n "$1" ]; then
     TARGETDIR="$1"
 fi
 
@@ -41,15 +41,24 @@ echo "*** Deactivating Python3 virtualenv..."
 deactivate
 
 echo "*** Copying script and configuration in place..."
-if [ -f "$TARGETDIR/fan_control.yaml" ]; then
-    mv "$TARGETDIR/fan_control.yaml"{,.old}
+RUNTIME_FILES=(
+    main.py
+    config_loader.py
+    control_policy.py
+    fan_controller.py
+    lifecycle.py
+    monitoring_web.py
+    state.py
+    temp_monitor.py
+    utils.py
+)
+for runtime_file in "${RUNTIME_FILES[@]}"; do
+    install -m 0644 "$runtime_file" "$TARGETDIR/$runtime_file"
+done
+install -m 0644 fan_control_config.yaml.example "$TARGETDIR/fan_control_config.yaml.example"
+if [ ! -f "$TARGETDIR/fan_control_config.yaml" ]; then
+    install -m 0600 fan_control_config.yaml.example "$TARGETDIR/fan_control_config.yaml"
 fi
-cp fan_control.yaml.example "$TARGETDIR/"
-cp main.py "$TARGETDIR/"
-cp fan_controller.py "$TARGETDIR/"
-cp config_loader.py "$TARGETDIR/"
-cp temp_monitor.py "$TARGETDIR/"
-cp state.py "$TARGETDIR/"
 
 echo "*** Creating, (re)starting and enabling SystemD service..."
 cp fan-control.service /etc/systemd/system/fan-control.service

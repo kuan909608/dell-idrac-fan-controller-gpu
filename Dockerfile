@@ -4,8 +4,8 @@ FROM python:3.13-slim
 # Set Python to output logs without buffering for real-time log visibility
 ENV PYTHONUNBUFFERED=1
 
-# Configure SSH to avoid blocking on first connection
-RUN mkdir /root/.ssh && echo "Host *\n  StrictHostKeyChecking accept-new" >/root/.ssh/config
+# Prepare a read-only mount point for an operator-managed known_hosts file.
+RUN install -d -m 0700 /root/.ssh
 
 # Install required system packages
 # build-essential: for compiling C extensions (needed by pysensors)

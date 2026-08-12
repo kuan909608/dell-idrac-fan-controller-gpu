@@ -1,7 +1,44 @@
 import sys
 import datetime
-import paramiko
+import shlex
 import subprocess
+from dataclasses import dataclass
+from typing import Optional, Sequence, Union
+
+
+@dataclass(frozen=True)
+class CommandSpec:
+    argv: Sequence[str]
+    stdin_data: Optional[str] = None
+
+
+Command = Union[str, Sequence[str], CommandSpec]
+SENSITIVE_CONFIG_KEYS = {'password', 'key_path', 'private_key', 'token', 'api_key'}
+
+
+def format_command(command: Command) -> str:
+    if isinstance(command, CommandSpec):
+        return shlex.join(command.argv)
+    if isinstance(command, str):
+        return command
+    return shlex.join(command)
+
+
+def redact_mapping(value):
+    if isinstance(value, dict):
+        return {
+            key: '***' if str(key).lower() in SENSITIVE_CONFIG_KEYS else redact_mapping(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [redact_mapping(item) for item in value]
+    return value
+
+
+def configure_ssh_client(client, paramiko_module):
+    client.load_system_host_keys()
+    client.set_missing_host_key_policy(paramiko_module.RejectPolicy())
+    return client
 
 def log(level, tag, msg, file=sys.stdout):
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -12,22 +49,36 @@ def log(level, tag, msg, file=sys.stdout):
 def ssh_exec_command(
     host: str,
     username: str,
-    command: str,
+    command: Command,
     password: str = None,
     key_path: str = None,
     logger=log,
     log_tag: str = None,
     debug: bool = False
 ):
+    import paramiko
+
     ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    configure_ssh_client(ssh, paramiko)
     try:
         if key_path:
-            pkey = paramiko.RSAKey.from_private_key_file(key_path)
-            ssh.connect(host, username=username, pkey=pkey)
+            ssh.connect(host, username=username, key_filename=key_path)
         else:
             ssh.connect(host, username=username, password=password)
-        stdin, stdout, stderr = ssh.exec_command(command)
+        if isinstance(command, CommandSpec):
+            remote_command = shlex.join(command.argv)
+            stdin_data = command.stdin_data
+        elif isinstance(command, str):
+            remote_command = command
+            stdin_data = None
+        else:
+            remote_command = shlex.join(command)
+            stdin_data = None
+        stdin, stdout, stderr = ssh.exec_command(remote_command)
+        if stdin_data is not None:
+            stdin.write(stdin_data)
+            stdin.flush()
+            stdin.channel.shutdown_write()
         output = stdout.read().decode().strip()
         error = stderr.read().decode()
         if logger:
@@ -56,7 +107,7 @@ def ssh_exec_command(
 
 def run_command(host_dict, command, logger=log, log_tag=None, debug: bool = False):
     if debug:
-        log("DEBUG", log_tag, f"Command for {log_tag}: {command}")
+        log("DEBUG", log_tag, f"Command for {log_tag}: {format_command(command)}")
 
     ssh_creds = host_dict.get('ssh_credentials')
     if ssh_creds:
@@ -72,7 +123,20 @@ def run_command(host_dict, command, logger=log, log_tag=None, debug: bool = Fals
         )
     else:
         try:
-            result = subprocess.run(command, shell=True, capture_output=True, text=True)
+            if isinstance(command, CommandSpec):
+                result = subprocess.run(
+                    command.argv,
+                    input=command.stdin_data,
+                    shell=False,
+                    capture_output=True,
+                    text=True,
+                )
+            elif isinstance(command, str):
+                # Sensor pipelines are an explicit administrator-authored part
+                # of the local configuration and require shell syntax.
+                result = subprocess.run(command, shell=True, capture_output=True, text=True)
+            else:
+                result = subprocess.run(command, shell=False, capture_output=True, text=True)
             output = result.stdout.strip()
             error = result.stderr.strip()
             if logger:

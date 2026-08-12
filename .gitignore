@@ -163,3 +163,9 @@ keys/*
 !keys/.gitkeep
 fan_control.yaml
 fan_control_config.yaml
+
+# Also consumed through the tracked .dockerignore symlink.
+.git/
+keys/
+output/
+.playwright-cli/

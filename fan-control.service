@@ -4,9 +4,21 @@ After=network.target
 
 [Service]
 Type=simple
+WorkingDirectory={TARGETDIR}
 ExecStart={TARGETDIR}/venv/bin/python3 -u {TARGETDIR}/main.py
 Restart=always
 RestartSec=15
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictRealtime=true
 
 [Install]
 WantedBy=multi-user.target

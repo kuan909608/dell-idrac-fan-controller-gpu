@@ -10,6 +10,11 @@ def init_state_from_config(hosts):
             'fan_speed': 0,
             'temp_avg': None,
             'temp_max': None,
+            'cpu_temps': [],
+            'gpu_temps': [],
+            'control_temperature': None,
+            'sensor_status': 'initializing',
+            'last_error': None,
             'last_updated': None,
             'temps': [],
             'vms': {}
@@ -20,6 +25,9 @@ def init_state_from_config(hosts):
                 state[host_name]['vms'][vm_name] = {
                     'temp_avg': None,
                     'temp_max': None,
+                    'gpu_temps': [],
+                    'sensor_status': 'initializing',
+                    'last_error': None,
                     'last_updated': None,
                     'temps': []
                 }

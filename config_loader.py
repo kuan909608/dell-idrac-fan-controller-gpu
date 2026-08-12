@@ -1,5 +1,6 @@
 import os
 import sys
+import math
 import yaml
 from utils import log, auto_split_thresholds
 
@@ -12,34 +13,22 @@ class Config:
             'debug': False,
             'interval': 60,
             'temperature_control_mode': 'max',
+            'web_enabled': True,
+            'web_host': '127.0.0.1',
+            'web_port': 8080,
             'cpu_temperature_command': 'sensors | grep -E "Core [0-9]+:" | awk \'{print $3}\' | sed \'s/+//;s/°C//\' | paste -sd \';\' -',
             'gpu_temperature_command_nvidia': 'nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits | paste -sd \';\' -',
             'gpu_temperature_command_amd': 'rocm-smi --showtemp | grep -E "Temp" | awk \'{print $2}\' | sed \'s/[^0-9.]//g\' | paste -sd \';\' -'
         }
         self.hosts = []
-        self.config_paths = ['fan_control.yaml', '/opt/fan_control/fan_control.yaml']
 
         self.load_config_from_file(config_path)
 
     def load_config_from_file(self, config_path):
-        _debug = self.general['debug']
-        _interval = self.general['interval']
-        _temperature_control_mode = self.general['temperature_control_mode']
-        _cpu_temperature_command = self.general['cpu_temperature_command']
-        _gpu_temperature_command_nvidia = self.general['gpu_temperature_command_nvidia']
-        _gpu_temperature_command_amd = self.general['gpu_temperature_command_amd']
-
-        if config_path and os.path.isfile(config_path):
-            use_path = config_path
-        else:
-            use_path = None
-            for path in self.config_paths:
-                if os.path.isfile(path):
-                    use_path = path
-                    break
-        if not use_path:
+        if not config_path or not os.path.isfile(config_path):
             raise RuntimeError("Missing or unspecified configuration file.")
         else:
+            use_path = config_path
             log("INFO", "CONFIG", f"Loading configuration file from {use_path}.")
             _config = None
             try:
@@ -48,16 +37,6 @@ class Config:
             except yaml.YAMLError as err:
                 log("ERROR", "CONFIG", f"YAML configuration error in {use_path}: {err}", file=sys.stderr)
                 raise ConfigError("Failed to load YAML configuration.")
-
-            config_section = _config.get("general", {})
-            _config["general"] = {
-                'debug': config_section.get('debug', _debug),
-                'interval': config_section.get('interval', _interval),
-                'temperature_control_mode': config_section.get('temperature_control_mode', _temperature_control_mode),
-                'cpu_temperature_command': config_section.get('cpu_temperature_command', _cpu_temperature_command),
-                'gpu_temperature_command_nvidia': config_section.get('gpu_temperature_command_nvidia', _gpu_temperature_command_nvidia),
-                'gpu_temperature_command_amd': config_section.get('gpu_temperature_command_amd', _gpu_temperature_command_amd),
-            }
 
         self.load_config_sections(_config)
 
@@ -73,15 +52,42 @@ class Config:
         self.general['debug'] = general_config.get('debug', False)
         self.general['interval'] = general_config.get('interval', 60)
         self.general['temperature_control_mode'] = general_config.get('temperature_control_mode', 'max')
+        self.general['web_enabled'] = general_config.get('web_enabled', True)
+        self.general['web_host'] = general_config.get('web_host', '127.0.0.1')
+        self.general['web_port'] = general_config.get('web_port', 8080)
         self.general['cpu_temperature_command'] = general_config.get('cpu_temperature_command', 'sensors | grep -E "Core [0-9]+:" | awk \'{print $3}\' | sed \'s/+//;s/°C//\' | paste -sd \';\' -')
         self.general['gpu_temperature_command_nvidia'] = general_config.get('gpu_temperature_command_nvidia', 'nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits | paste -sd \';\' -')
         self.general['gpu_temperature_command_amd'] = general_config.get('gpu_temperature_command_amd', 'rocm-smi --showtemp | grep -E "Temp" | awk \'{print $2}\' | sed \'s/[^0-9.]//g\' | paste -sd \';\' -')
+        if not isinstance(self.general['debug'], bool):
+            raise ConfigError('general.debug must be true or false.')
+        if not isinstance(self.general['interval'], (int, float)) or self.general['interval'] <= 0:
+            raise ConfigError('general.interval must be greater than zero.')
+        if isinstance(self.general['interval'], bool) or not math.isfinite(self.general['interval']):
+            raise ConfigError('general.interval must be a finite number.')
+        if self.general['temperature_control_mode'] not in ['max', 'avg']:
+            raise ConfigError('general.temperature_control_mode must be "max" or "avg".')
+        if not isinstance(self.general['web_enabled'], bool):
+            raise ConfigError('general.web_enabled must be true or false.')
+        if not isinstance(self.general['web_host'], str) or not self.general['web_host'].strip():
+            raise ConfigError('general.web_host must be a non-empty string.')
+        if not isinstance(self.general['web_port'], int) or not 1 <= self.general['web_port'] <= 65535:
+            raise ConfigError('general.web_port must be an integer from 1 to 65535.')
+        for command_name in [
+            'cpu_temperature_command',
+            'gpu_temperature_command_nvidia',
+            'gpu_temperature_command_amd',
+        ]:
+            command = self.general[command_name]
+            if not isinstance(command, str) or not command.strip():
+                raise ConfigError(f'general.{command_name} must be a non-empty string.')
 
     def load_hosts_config(self, _config):
         if 'hosts' not in _config:
             raise ConfigError('Missing "hosts" section in configuration file.')
 
         self.hosts = _config['hosts']
+        if not isinstance(self.hosts, list) or not self.hosts:
+            raise ConfigError('"hosts" must be a non-empty list.')
 
         for host in self.hosts:
             if 'name' not in host or not isinstance(host['name'], str):
@@ -93,10 +99,18 @@ class Config:
             if 'ipmi_credentials' in host and host['ipmi_credentials']:
                 ipmi_creds = host['ipmi_credentials']
                 for key in ['host', 'username', 'password']:
-                    if key not in ipmi_creds or not ipmi_creds[key]:
+                    if key not in ipmi_creds or not isinstance(ipmi_creds[key], str) or not ipmi_creds[key].strip():
                         raise ConfigError(f'Host "{host["name"]}" missing "{key}" in ipmi_credentials.')
 
             host['hysteresis'] = host.get('hysteresis', 0)
+            if not self.is_finite_number(host['hysteresis']) or host['hysteresis'] < 0:
+                raise ConfigError(f'Host "{host["name"]}" hysteresis must be zero or greater.')
+            if not isinstance(host.get('temperatures'), list) or not all(self.is_finite_number(x) for x in host['temperatures']):
+                raise ConfigError(f'Host "{host["name"]}" temperatures must be a list of numbers.')
+            if not isinstance(host.get('speeds'), list) or not all(self.is_finite_number(x) for x in host['speeds']):
+                raise ConfigError(f'Host "{host["name"]}" speeds must be a list of numbers.')
+            if any(speed < 0 or speed > 100 for speed in host['speeds']):
+                raise ConfigError(f'Host "{host["name"]}" speeds must be between 0 and 100 percent.')
 
             if (
                 isinstance(host['temperatures'], list) and
@@ -113,10 +127,6 @@ class Config:
             else:
                 if len(host['temperatures']) != len(host['speeds']):
                     raise ConfigError(f'Host "{host["name"]}" temperatures and speeds count must be equal.')
-                if not isinstance(host['temperatures'], list) or not all(isinstance(x, (int, float)) for x in host['temperatures']):
-                    raise ConfigError(f'Host "{host["name"]}" temperatures must be a list of numbers.')
-                if not isinstance(host['speeds'], list) or not all(isinstance(x, (int, float)) for x in host['speeds']):
-                    raise ConfigError(f'Host "{host["name"]}" speeds must be a list of numbers.')
                 if len(host['temperatures']) < 2:
                     raise ConfigError(f'Host "{host["name"]}" must have at least 2 temperature thresholds and fan speeds.')
                 if any(host['temperatures'][i] > host['temperatures'][i+1] for i in range(len(host['temperatures']) - 1)):
@@ -125,12 +135,7 @@ class Config:
                     raise ConfigError(f'Host "{host["name"]}" speeds must be in ascending order or equal.')
 
             if 'ssh_credentials' in host and host['ssh_credentials']:
-                creds = host['ssh_credentials']
-                for key in ['host', 'username', 'password']:
-                    if key not in creds or not creds[key]:
-                        raise ConfigError(f'Host "{host.get("name", "unknown")}" missing "{key}" in ssh_credentials.')
-                if 'key_path' in creds and creds['key_path'] and not isinstance(creds['key_path'], str):
-                    raise ConfigError(f'Host "{host.get("name", "unknown")}" key_path in ssh_credentials must be a string if provided.')
+                self.validate_ssh_credentials(host['ssh_credentials'], f'Host "{host.get("name", "unknown")}"')
 
             if 'gpu_type' in host:
                 if isinstance(host['gpu_type'], str):
@@ -154,14 +159,32 @@ class Config:
             if 'ssh_credentials' not in vm:
                 raise ConfigError(f'VM "{vm.get("name", "unknown")}" must include "ssh_credentials".')
             creds = vm['ssh_credentials']
-            for key in ['host', 'username', 'password']:
-                if key not in creds or not creds[key]:
-                    raise ConfigError(f'VM "{vm.get("name", "unknown")}" missing "{key}" in ssh_credentials.')
-            if 'key_path' in creds and creds['key_path'] and not isinstance(creds['key_path'], str):
-                raise ConfigError(f'VM "{vm.get("name", "unknown")}" key_path in ssh_credentials must be a string if provided.')
+            self.validate_ssh_credentials(creds, f'VM "{vm.get("name", "unknown")}"')
             if 'gpu_type' not in vm:
                 raise ConfigError(f'VM "{vm.get("name", "unknown")}" must specify gpu_type')
             if isinstance(vm['gpu_type'], str):
                 vm['gpu_type'] = [vm['gpu_type']]
             if not isinstance(vm['gpu_type'], list) or not all(x in ['nvidia', 'amd'] for x in vm['gpu_type']):
                 raise ConfigError(f'VM "{vm.get("name", "unknown")}" gpu_type must be an array containing only "nvidia" or "amd", e.g. ["nvidia", "amd"]')
+
+    @staticmethod
+    def is_finite_number(value):
+        return (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(value)
+        )
+
+    @staticmethod
+    def validate_ssh_credentials(creds, owner):
+        for key in ['host', 'username']:
+            if key not in creds or not isinstance(creds[key], str) or not creds[key].strip():
+                raise ConfigError(f'{owner} missing "{key}" in ssh_credentials.')
+        password = creds.get('password')
+        key_path = creds.get('key_path')
+        if not password and not key_path:
+            raise ConfigError(f'{owner} must provide password or key_path in ssh_credentials.')
+        if password is not None and not isinstance(password, str):
+            raise ConfigError(f'{owner} password in ssh_credentials must be a string.')
+        if key_path is not None and not isinstance(key_path, str):
+            raise ConfigError(f'{owner} key_path in ssh_credentials must be a string.')

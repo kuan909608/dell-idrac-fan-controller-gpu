@@ -9,14 +9,45 @@ from config_loader import Config, ConfigError
 from state import state, init_state_from_config
 from fan_controller import FanController
 from temp_monitor import TempMonitor
-from utils import log
+from utils import log, redact_mapping
+from control_policy import SensorSnapshot, determine_control_temperature
+from lifecycle import restore_automatic_control
+from monitoring_web import MonitoringServer, WebSettings
 
-config = Config("fan_control_config.yaml")
-init_state_from_config(config.hosts)
-
-def main():
+def main(config_path="fan_control_config.yaml"):
+    config = Config(config_path)
+    init_state_from_config(config.hosts)
     controller = FanController(config)
     monitor = TempMonitor(config)
+    web_server = None
+    if config.general.get('web_enabled', True):
+        web_server = MonitoringServer(
+            state,
+            WebSettings(
+                host=config.general.get('web_host', '127.0.0.1'),
+                port=config.general.get('web_port', 8080),
+                stale_after_seconds=max(180, config.general.get('interval', 60) * 3),
+            ),
+        )
+        web_server.start()
+        web_host, web_port = web_server.address
+        log("INFO", "web", f"Read-only monitoring available at http://{web_host}:{web_port}")
+    try:
+        run_controller(config, controller, monitor)
+    finally:
+        if web_server:
+            web_server.stop()
+        failures = restore_automatic_control(controller, config.hosts, logger=log)
+        if failures:
+            log(
+                "ERROR",
+                "main",
+                "Failed to restore automatic fan control for: " + ", ".join(failures),
+                file=sys.stderr,
+            )
+
+
+def run_controller(config, controller, monitor):
     debug = config.general.get('debug', False)
     for host in config.hosts:
         thresholds_str = ", ".join(
@@ -26,7 +57,7 @@ def main():
         log("INFO", host['name'], f"Host temperature hysteresis: {host['hysteresis']:.2f}°C")
         controller.set_fan_control(host.get('fan_control_mode', 'manual'), host)
         if debug:
-            log("DEBUG", host['name'], f"Host config: {host}")
+            log("DEBUG", host['name'], f"Host config: {redact_mapping(host)}")
 
     log("INFO", "main", "=" * 50)
     log("INFO", "main", "Initialization complete. Start main loop.")
@@ -45,81 +76,90 @@ def main():
 
             try:
                 cpu_temps = monitor.get_cpu_temps(host)
-                gpu_temps = monitor.get_gpu_temps(host)
+                gpu_temps, host_gpu_error = monitor.get_gpu_temps(host)
                 if debug:
                     log("DEBUG", host['name'], f"Host CPU temperature: {cpu_temps}")
                     log("DEBUG", host['name'], f"Host GPU temperature: {gpu_temps}")
 
                 vm_gpu_temps = []
+                gpu_source_errors = []
+                if host.get('gpu_type') and not gpu_temps:
+                    gpu_source_errors.append(host_gpu_error or 'Host GPU temperature unavailable')
                 if 'vms' in host and isinstance(host['vms'], list):
                     for vm in host['vms']:
-                        temps = monitor.get_gpu_temps(host, vm['name'])
+                        temps, vm_error = monitor.get_gpu_temps(host, vm['name'])
                         if debug:
                             log("DEBUG", host['name'], f"VM {vm['name']} GPU temps: {temps}")
                         if temps:
                             vm_gpu_temps.extend(temps)
+                        else:
+                            gpu_source_errors.append(
+                                vm_error or f"VM {vm['name']} GPU temperature unavailable"
+                            )
+                        vm_state = state[host['name']]['vms'][vm['name']]
+                        vm_state['gpu_temps'] = list(temps or [])
+                        vm_state['sensor_status'] = 'ok' if temps else 'error'
+                        vm_state['last_error'] = None if temps else (vm_error or 'GPU temperature unavailable')
+                        vm_state['last_updated'] = datetime.datetime.now().astimezone().isoformat()
 
                 all_gpu_temps = list(gpu_temps) if gpu_temps else []
                 all_gpu_temps.extend(vm_gpu_temps)
 
-                if cpu_temps is None:
-                    log("ERROR", host['name'], "Host CPU temperature data error, fans running at full speed", file=sys.stderr)
-                    temp_avg = 999
-                    temp_max = 999
-                    control_temperature = 999
+                decision = determine_control_temperature(
+                    SensorSnapshot(
+                        cpu_temps=cpu_temps,
+                        gpu_temps=all_gpu_temps,
+                        gpu_sources_healthy=not gpu_source_errors,
+                    ),
+                    mode=config.general.get('temperature_control_mode', 'max'),
+                )
+
+                if decision.fail_safe:
+                    log("ERROR", host['name'], "Required temperature data unavailable, fans running at full speed", file=sys.stderr)
                 else:
-                    cpu_avg = round(sum(cpu_temps) / len(cpu_temps), 2)
-                    cpu_max = round(max(cpu_temps), 2)
-                    log("INFO", host['name'], f"Host CPU avg temperature: {cpu_avg:.2f}°C")
-                    log("INFO", host['name'], f"Host CPU max temperature: {cpu_max:.2f}°C")
+                    log("INFO", host['name'], f"Host CPU avg temperature: {decision.cpu_avg:.2f}°C")
+                    log("INFO", host['name'], f"Host CPU max temperature: {decision.cpu_max:.2f}°C")
 
                     if all_gpu_temps:
-                        gpu_avg = round(sum(all_gpu_temps) / len(all_gpu_temps), 2)
-                        gpu_max = round(max(all_gpu_temps), 2)
-                        log("INFO", host['name'], f"Host GPU avg temperature: {gpu_avg:.2f}°C")
-                        log("INFO", host['name'], f"Host GPU max temperature: {gpu_max:.2f}°C")
+                        log("INFO", host['name'], f"Host GPU avg temperature: {decision.gpu_avg:.2f}°C")
+                        log("INFO", host['name'], f"Host GPU max temperature: {decision.gpu_max:.2f}°C")
                     else:
-                        gpu_avg = None
-                        gpu_max = None
                         log("INFO", host['name'], "No GPU temperature data for host, using CPU only.")
 
-                    all_temps = []
-                    if cpu_max is not None:
-                        all_temps.append(cpu_max)
-                    if all_gpu_temps:
-                        all_temps.extend(all_gpu_temps)
-                    if all_temps:
-                        temp_avg = round(sum(all_temps) / len(all_temps), 2)
-                        temp_max = round(max(all_temps), 2)
-                    else:
-                        temp_avg = None
-                        temp_max = None
-                    log("INFO", host['name'], f"Host all avg temperature: {temp_avg:.2f}°C")
-                    log("INFO", host['name'], f"Host all max temperature: {temp_max:.2f}°C")
-
+                    log("INFO", host['name'], f"Host all avg temperature: {decision.combined_avg:.2f}°C")
+                    log("INFO", host['name'], f"Host all max temperature: {decision.combined_max:.2f}°C")
                     mode = config.general.get('temperature_control_mode', 'max')
-                    if mode == 'avg':
-                        if all_temps:
-                            control_temperature = temp_avg
-                        else:
-                            control_temperature = 999
-                        log("INFO", host['name'], f"Host control temperature (avg): {control_temperature:.2f}°C")
-                    else:
-                        if gpu_max is not None:
-                            control_temperature = temp_max
-                        else:
-                            control_temperature = 999
-                        log("INFO", host['name'], f"Host control temperature (max): {control_temperature:.2f}°C")
+                    log("INFO", host['name'], f"Host control temperature ({mode}): {decision.control_temperature:.2f}°C")
 
-                state[host['name']]['temps'].append({
+                temp_avg = decision.combined_avg
+                temp_max = decision.combined_max
+                control_temperature = decision.control_temperature
+                host_state = state[host['name']]
+                host_state['cpu_temps'] = list(cpu_temps or [])
+                host_state['gpu_temps'] = list(all_gpu_temps or [])
+                host_state['control_temperature'] = control_temperature
+                host_state['sensor_status'] = 'error' if decision.fail_safe else 'ok'
+                if not cpu_temps:
+                    host_state['last_error'] = 'CPU temperature unavailable'
+                elif gpu_source_errors:
+                    host_state['last_error'] = '; '.join(gpu_source_errors)
+                else:
+                    host_state['last_error'] = None
+
+                host_state['temps'].append({
                     'temp_avg': temp_avg,
                     'temp_max': temp_max,
                     'last_updated': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 })
-                state[host['name']]['last_updated'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                host_state['temps'] = host_state['temps'][-120:]
+                host_state['last_updated'] = datetime.datetime.now().astimezone().isoformat()
                 controller.apply_fan_speed(control_temperature, host)
             except Exception as e:
                 log("ERROR", host['name'], f"Unexpected error: {e}", file=sys.stderr)
+                state[host['name']]['sensor_status'] = 'error'
+                state[host['name']]['last_error'] = str(e)
+                state[host['name']]['control_temperature'] = 999.0
+                state[host['name']]['last_updated'] = datetime.datetime.now().astimezone().isoformat()
                 controller.apply_fan_speed(999, host)
 
         time.sleep(config.general['interval'])
