@@ -2,119 +2,87 @@
 
 # Dell iDRAC Fan Controller with GPU Support
 
-> A temperature-based fan speed controller for Dell PowerEdge servers. The project was historically reported on an R730, but every model, iDRAC firmware, GPU, and deployment combination requires independent verification; see [COMPATIBILITY.md](COMPATIBILITY.md).
+[![CI](https://github.com/kuan909608/dell-idrac-fan-controller-gpu/actions/workflows/ci.yml/badge.svg)](https://github.com/kuan909608/dell-idrac-fan-controller-gpu/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/github/license/kuan909608/dell-idrac-fan-controller-gpu)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/kuan909608/dell-idrac-fan-controller-gpu?display_name=tag&sort=semver)](https://github.com/kuan909608/dell-idrac-fan-controller-gpu/releases)
+[![Python 3.11 | 3.13](https://img.shields.io/badge/Python-3.11%20%7C%203.13-3776AB?logo=python&logoColor=white)](.github/workflows/ci.yml)
 
-This fork is designed for homelab and Proxmox users running local AI or other GPU workloads on Dell PowerEdge hardware. It combines CPU, NVIDIA/AMD GPU, and VM temperature signals so operators can observe thermal health and apply predictable fan curves when vendor defaults are unsuitable for nonstandard accelerators.
+A temperature-driven fan controller for Dell PowerEdge servers whose stock cooling policy does not account well for nonstandard accelerator workloads. It is aimed at Proxmox VE, homelab, local AI server, and other GPU-heavy environments where CPU, host GPU, and passed-through VM GPU temperatures need to influence the same fan curve.
+
+The controller supports CPU sensors, NVIDIA and AMD GPU sensors, VM GPU polling over SSH, multiple hosts, local or remote IPMI execution, systemd and remote-oriented Docker deployment, read-only Web monitoring, missing-sensor fail-safe behavior, and validated runtime configuration reloads.
 
 > [!CAUTION]
-> This software changes physical cooling through raw IPMI commands and may run as root. It cannot guarantee hardware safety. Validate thresholds on your exact server, iDRAC firmware, GPU, and workload; retain out-of-band monitoring; and verify automatic fan restoration during shutdown and failure tests.
+> This software sends raw IPMI commands that change physical cooling and may run as root. It cannot guarantee hardware safety or compatibility. Validate it on your exact server, iDRAC firmware, GPUs, sensor commands, and sustained workload. Keep independent thermal alerts and out-of-band access available.
 
-- [Requisites](#requisites)
-- [Project layout](#project-layout)
-- [Installation / Upgrade](#installation--upgrade)
-  - [Docker](#docker)
-- [Configuration](#configuration)
-- [How it works](#how-it-works)
-- [Read-only Web monitoring](#read-only-web-monitoring)
-- [Security](#security)
-- [Notes on remote hosts](#notes-on-remote-hosts)
-- [Credits](#credits)
+## Use cases
 
----
+- A Proxmox VE host with one or more GPUs passed through to AI or compute VMs.
+- A Dell PowerEdge homelab server whose add-in GPU temperature is not reflected adequately by the stock fan response.
+- One controller monitoring several servers and VMs over SSH while sending IPMI commands locally or remotely.
+- An operator who needs a loopback-only dashboard and JSON status endpoint without remote control actions.
 
-## Project layout
+Hardware support is deliberately not inferred from the Dell product family. The R730 has a historical community report with incomplete details; no model is currently release-verified. See the evidence levels in [COMPATIBILITY.md](COMPATIBILITY.md).
 
-```text
-.
-├── main.py                     # Application entry point and reload lifecycle
-├── config_loader.py            # YAML loading and validation
-├── control_policy.py           # Temperature aggregation and fail-safe policy
-├── fan_controller.py           # Dell IPMI fan control
-├── temp_monitor.py             # Local and remote sensor collection
-├── monitoring_web.py           # Read-only TUI-style dashboard and JSON API
-├── lifecycle.py / state.py     # Shutdown recovery and shared runtime state
-├── fan_control_config.yaml.example
-├── Dockerfile / docker-compose.yml
-├── install.sh / fan-control.service
-├── tests/                       # Unit, security, lifecycle and packaging tests
-└── .github/                     # CI, issue forms and contribution automation
+## How it works
+
+For each configured host, the controller polls CPU temperatures and any configured host/VM GPUs. The control policy represents the CPU by its hottest core, combines that value with every available GPU temperature, then selects either the maximum (`max`) or their arithmetic mean (`avg`). The fan curve maps that control temperature to a configured speed and sends it to Dell iDRAC through `ipmitool`.
+
+```mermaid
+flowchart LR
+    CPU[CPU Sensor] --> AGG[Temperature Aggregation]
+    GPU[Host NVIDIA / AMD GPU Sensor] --> AGG
+    VM[VM GPU Sensor over SSH] --> AGG
+    AGG --> POLICY[Control Policy: max or avg]
+    CPU -. missing .-> SAFE[Fail-safe]
+    GPU -. configured source missing .-> SAFE
+    VM -. configured source missing .-> SAFE
+    SAFE --> CURVE[Fan Curve]
+    POLICY --> CURVE
+    CURVE --> IPMI[IPMI raw command]
+    IPMI --> IDRAC[Dell iDRAC fan control]
 ```
 
-Local configuration, SSH keys, virtual environments, caches, and generated browser artifacts are intentionally excluded from Git and Docker images.
+Missing CPU data, or failure of any configured GPU source, activates the fail-safe sentinel and therefore the last (highest configured) fan-curve speed. This is not necessarily 100%; choose the last speed accordingly. See [ARCHITECTURE.md](ARCHITECTURE.md) for exact behavior and recovery limits.
 
-## Requisites
+## Requirements
 
-1. Python 3 is installed.
-2. **IPMI Over LAN** is enabled in all used iDRACs (_Login > Network/Security > IPMI Settings_).
-   - May not be needed if you're only managing the local machine.
-3. All hosts to be monitored must have the appropriate sensor tools installed as needed:
+- Linux with Python 3.11 or 3.13 (the versions exercised by CI).
+- `ipmitool`, available where the IPMI command is executed.
+- `lm-sensors`/`sensors` for the default CPU command.
+- `nvidia-smi` and/or `rocm-smi` where the corresponding GPU is polled.
+- IPMI over LAN enabled in iDRAC when using `ipmi_credentials`.
+- SSH known-host entries and either a key or password for remote hosts and VMs.
 
-   - For monitoring local CPU: install and configure `lm-sensors`
-   - For monitoring NVIDIA GPU: install `nvidia-smi`
-   - For monitoring AMD GPU: install `rocm-smi`
+Sensor commands are administrator-provided shell pipelines and must return semicolon-delimited numbers such as `42;47;55`. Unknown SSH host keys are rejected.
 
-   - Example output of `sensors` for a dual CPU system:
+## Install with systemd
 
-     ```text
-     coretemp-isa-0000
-     Adapter: ISA adapter
-     Core 0:       +38.0°C  (high = +69.0°C, crit = +79.0°C)
-     Core 1:       +46.0°C  (high = +69.0°C, crit = +79.0°C)
-     Core 2:       +40.0°C  (high = +69.0°C, crit = +79.0°C)
-     Core 8:       +43.0°C  (high = +69.0°C, crit = +79.0°C)
-     Core 9:       +39.0°C  (high = +69.0°C, crit = +79.0°C)
-     Core 10:      +39.0°C  (high = +69.0°C, crit = +79.0°C)
-
-     coretemp-isa-0001
-     Adapter: ISA adapter
-     Core 0:       +29.0°C  (high = +69.0°C, crit = +79.0°C)
-     Core 1:       +35.0°C  (high = +69.0°C, crit = +79.0°C)
-     Core 2:       +29.0°C  (high = +69.0°C, crit = +79.0°C)
-     Core 8:       +34.0°C  (high = +69.0°C, crit = +79.0°C)
-     Core 9:       +33.0°C  (high = +69.0°C, crit = +79.0°C)
-     Core 10:      +31.0°C  (high = +69.0°C, crit = +79.0°C)
-     ```
-
-## Installation / Upgrade
-
-Clone the repo and run the installation script as root to configure the system or upgrade the already installed controller:
-
-```text
-git clone https://github.com/kuan909608/dell-idrac-fan-controller-gpu.git
-cd dell-idrac-fan-controller-gpu
-sudo ./install.sh [<installation path>]
-```
-
-The default installation path is `/opt/fan_control` and the service will be installed as `fan-control.service`. An existing `fan_control_config.yaml` is preserved unchanged; back it up before editing or upgrading.
-
-### Docker
-
-To deploy remote fan management with Docker (`fan_control` running on a separate host and only interacting with remote ones, see [Notes on remote hosts](#notes-on-remote-hosts)), build the image in the repo and bind mount your own YAML config and SSH keys folder:
+Use this mode when the controller runs on the server whose local sensors it reads. From a repository checkout:
 
 ```bash
 git clone https://github.com/kuan909608/dell-idrac-fan-controller-gpu.git
 cd dell-idrac-fan-controller-gpu
-mkdir -p config
-cp fan_control_config.yaml.example config/fan_control_config.yaml
-chmod 600 config/fan_control_config.yaml
-docker build -t fan_control .
-docker run -d --restart=always --name fan_control \
-  -p 127.0.0.1:8080:8080 \
-  -v "./config:/config:ro" \
-  -v "./keys:/app/keys:ro" \
-  -v "$HOME/.ssh/known_hosts:/root/.ssh/known_hosts:ro" \
-  fan_control
+sudo ./install.sh
+sudo systemctl status fan-control
 ```
 
-For Docker Web monitoring, set `general.web_host: 0.0.0.0` inside the container. The `-p 127.0.0.1:8080:8080` mapping above still restricts access to the Docker host; use the documented SSH tunnel for remote viewing.
+The default installation path is `/opt/fan_control`; pass a different absolute path as the first argument if needed. The installer creates `fan-control.service`, preserves an existing `fan_control_config.yaml`, and restarts the service. Review the generated configuration before enabling manual fan control.
 
-The controller detects changes to `fan_control_config.yaml` before the next control cycle. A changed file is fully validated before use; invalid updates are rejected while the last valid configuration remains active. Reloading a manual-control configuration first restores Dell automatic mode, then applies the validated replacement. Docker deployments must mount the configuration directory as shown above so editors that atomically replace the YAML file remain visible inside the container.
-
-#### Docker Compose
-
-The included `docker-compose.yml` uses the same loopback-only dashboard, reloadable configuration directory, SSH keys, and verified `known_hosts` mounts:
+Useful operations:
 
 ```bash
+sudo journalctl -u fan-control -f
+sudo systemctl restart fan-control
+sudo systemctl stop fan-control
+```
+
+## Install with Docker
+
+The included image is intended for remote management: it includes `ipmitool`, but not host CPU/GPU sensor packages or device access. Do not assume that mounting `/dev` or `/sys` alone enables local sensor collection.
+
+```bash
+git clone https://github.com/kuan909608/dell-idrac-fan-controller-gpu.git
+cd dell-idrac-fan-controller-gpu
 mkdir -p config keys
 cp fan_control_config.yaml.example config/fan_control_config.yaml
 chmod 600 config/fan_control_config.yaml
@@ -123,258 +91,96 @@ docker compose up -d --build
 docker compose logs -f
 ```
 
-Use `docker compose down` for a graceful stop. Compose allows 30 seconds for the controller to restore Dell automatic fan mode. Do not run this service at the same time as a systemd or standalone Docker deployment controlling the same server.
+The Compose file mounts the configuration directory, `keys/`, and the operator's `known_hosts`; it publishes the dashboard only on `127.0.0.1:8080`. Set `general.web_host: 0.0.0.0` inside the container so the loopback-published port can reach it. Use `docker compose down` for a graceful stop.
 
-Running this tool under a proper orchestrator is advised.
+The equivalent standalone command is:
 
----
+```bash
+docker build -t dell-idrac-fan-controller-gpu:local .
+docker run -d --name fan_control --restart unless-stopped --init --stop-timeout 30 \
+  -p 127.0.0.1:8080:8080 \
+  -v "./config:/config:ro" \
+  -v "./keys:/app/keys:ro" \
+  -v "$HOME/.ssh/known_hosts:/root/.ssh/known_hosts:ro" \
+  dell-idrac-fan-controller-gpu:local
+```
 
-### Deployment Method Selection Guide
-
-**You can deploy this tool in two ways: systemd (bare-metal) or Docker. Please choose only one method for each host.**
-
-#### When to use systemd (bare-metal)
-
-- Recommended if you need direct access to hardware sensors (e.g., lm-sensors) on the host.
-- Suitable for environments where you want the service to start automatically with the OS and be managed by systemd.
-- The `install.sh` script automates dependency installation, venv setup, file copying, and systemd service configuration.
-
-#### When to use Docker
-
-- Recommended for remote-only management, or if you want to isolate the environment and simplify migration.
-- If you need to access hardware sensors inside Docker, you must mount additional system directories (e.g., `/dev`, `/sys`). Example:
-  ```bash
-  docker run ... -v /dev:/dev -v /sys:/sys ...
-  ```
-- Make sure to mount your configuration file and SSH keys as shown above.
-- For production, use an orchestrator for better reliability.
-
-#### Important Notes
-
-- **Do not enable both systemd service and Docker container on the same host at the same time.** Running both may cause conflicts or resource contention.
-- The `install.sh` script will overwrite existing files and systemd service. Backup your configuration before running it.
-- When using SSH keys in Docker, ensure proper permissions and security practices.
+Run only one controller for a given server. Competing systemd, Docker, or standalone processes can overwrite each other's fan mode and speed.
 
 ## Configuration
 
-You can tune the controller's settings via the `fan_control_config.yaml` file in the installation directory.
+Copy [fan_control_config.yaml.example](fan_control_config.yaml.example) and replace every example address and credential. The example starts with `debug: true`; confirm all sensor and planned IPMI output before changing it to `false`. Core settings are:
 
-Saved changes are loaded automatically before the next control cycle; restarting the process or container is not required. Invalid files are rejected and the last valid settings remain active.
+| Key | Meaning |
+| --- | --- |
+| `general.debug` | Dry-run IPMI changes and enable additional logging. Sensor commands still execute. |
+| `general.interval` | Seconds between control cycles; must be greater than zero. |
+| `general.temperature_control_mode` | `max` or `avg`; see the aggregation definition above. |
+| `general.web_enabled` | Enable the read-only dashboard and JSON endpoint. |
+| `general.web_host`, `web_port` | Bind address and port; defaults are `127.0.0.1:8080`. |
+| `general.web_refresh_interval` | Dashboard refresh period, from 1 to 3600 seconds. |
+| `*_temperature_command` | Trusted shell command returning semicolon-delimited temperatures. |
+| `hosts[].fan_control_mode` | `manual` for script control or `automatic` for Dell control. |
+| `hosts[].temperatures`, `speeds` | Matching ascending lists with at least two entries; speeds are 0–100. |
+| `hosts[].hysteresis` | Non-negative threshold tolerance used by the current fan-curve calculation. |
+| `hosts[].ipmi_credentials` | Optional iDRAC host, username, and password. |
+| `hosts[].ssh_credentials` | Optional execution host, username, and password or `key_path`. |
+| `hosts[].gpu_type` | Optional `nvidia`, `amd`, or a list containing both. |
+| `hosts[].vms` | Optional VM name, SSH credentials, and required GPU type. |
 
-### Configuration File Structure
+When exactly two thresholds and speeds are supplied with hysteresis greater than zero, the loader expands them into intermediate points. For example, `[40, 80]`, `[20, 80]`, and hysteresis `5` become thresholds `[40, 50, 60, 70, 80]` and speeds `[20, 35, 50, 65, 80]`.
 
-The configuration file contains two main sections: `general` and `hosts`.
+The configuration file is checked before each control cycle. A changed file is fully validated; invalid updates are rejected and the last valid configuration stays active. Before applying a valid replacement, all previously manual hosts must be restored to Dell automatic mode. Web bind and refresh settings are reloaded too.
 
-#### `general` section
+## Web monitoring
 
-| Key                              | Description                                                                                       |
-| -------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `debug`                          | Toggle debug mode (print ipmitool commands instead of executing them, enable additional logging). |
-| `interval`                       | How often (in seconds) to read the CPUs' and GPUs' temperatures and adjust the fans' speeds.      |
-| `temperature_control_mode`       | Use `max` or `avg` to decide if fan control is based on the maximum or average temperature.       |
-| `web_enabled`                    | Enable the read-only monitoring dashboard.                                                        |
-| `web_host`                       | Monitoring bind address; defaults to `127.0.0.1`.                                                 |
-| `web_port`                       | Monitoring TCP port; defaults to `8080`.                                                          |
-| `web_refresh_interval`           | Dashboard refresh interval in seconds; defaults to `3` (range: 1–3600).                           |
-| `cpu_temperature_command`        | Shell command to get CPU temperatures (semicolon separated).                                      |
-| `gpu_temperature_command_nvidia` | Shell command to get NVIDIA GPU temperatures (semicolon separated).                               |
-| `gpu_temperature_command_amd`    | Shell command to get AMD GPU temperatures (semicolon separated).                                  |
+The built-in service exposes `GET /` and `GET /api/status`. It reports host and VM sensor health, CPU/GPU temperatures, control temperature, current script/iDRAC/dry-run state, last commanded fan speed, and update time. Mutation methods return `405`, and credentials are not included.
 
-#### `hosts` section
-
-Each host object supports the following keys:
-
-| Key                | Description                                                                                                                           |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`             | Host name identifier.                                                                                                                 |
-| `fan_control_mode` | Fan control mode, `manual` or `automatic`.                                                                                            |
-| `temperatures`     | List of temperature thresholds (in °C). **Must have at least 2 values.**                                                              |
-| `speeds`           | List of fan speeds (in %) for each threshold. **Must have at least 2 values.**                                                        |
-| `hysteresis`       | Hysteresis value in °C to prevent rapid fan speed changes.                                                                            |
-| `ipmi_credentials` | (Optional) IPMI login info for this host.                                                                                             |
-| `ssh_credentials`  | (Optional) SSH login info. Requires `host`, `username`, and either `password` or `key_path`. Unknown host keys are rejected. |
-| `gpu_type`         | (Optional) Supported GPU types, can be a string (e.g., `nvidia`) or an array (e.g., `[nvidia, amd]`).                                 |
-| `vms`              | (Optional) List of VM objects. See below for VM object structure.                                                                     |
-
-##### `vms` objects
-
-Each VM object supports the following keys:
-
-| Key               | Description                                                                                                             |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `name`            | VM name identifier.                                                                                                     |
-| `ssh_credentials` | SSH login info for the VM. Requires `host`, `username`, and either `password` or `key_path`. |
-| `gpu_type`        | Supported GPU types for the VM, can be a string (e.g., `nvidia`) or an array (e.g., `[nvidia, amd]`).                   |
-
-### Auto-splitting thresholds and speeds
-
-If you only specify 2 pairs of `temperatures` and `speeds` (e.g., `[40, 80]` and `[20, 80]`), the system will automatically split them into multiple steps based on the `hysteresis` value.
-
-The splitting logic:
-
-- The range between `temp_min` and `temp_max` will be divided into intervals of `hysteresis * 2`.
-- For each interval, a new threshold and corresponding speed will be generated, resulting in smoother fan speed transitions.
-
-**Example:**
-
-```yaml
-temperatures: [40, 80]
-speeds: [20, 80]
-hysteresis: 5
-```
-
-This will be automatically expanded to:
-
-```
-thresholds: [40.00, 50.00, 60.00, 70.00, 80.00]
-speeds: [20, 35, 50, 65, 80]
-```
-
-#### Example
-
-```yaml
-general:
-  debug: False
-  interval: 60
-  cpu_temperature_command: "sensors | grep -E 'Core [0-9]+:' | awk '{print $3}' | sed 's/+//;s/°C//' | paste -sd ';' -"
-  gpu_temperature_command_nvidia: "nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits | paste -sd ';' -"
-  gpu_temperature_command_amd: "rocm-smi --showtemp | grep -E 'Temp' | awk '{print \$2}' | sed 's/[^0-9.]//g' | paste -sd ';' -"
-
-hosts:
-  - name: host1
-    temperatures: [40, 60, 80]
-    speeds: [20, 50, 80]
-    hysteresis: 5
-    ipmi_credentials:
-      host: 10.0.0.1
-      username: admin
-      password: password
-    ssh_credentials:
-      host: 10.0.0.2
-      username: admin
-      password: password
-    gpu_type: nvidia
-    vms:
-      - name: vm1
-        ssh_credentials:
-          host: 10.0.0.3
-          username: user
-          password: password
-        gpu_type: [nvidia]
-  - name: host2
-    temperatures: [35, 55, 75]
-    speeds: [30, 60, 90]
-    hysteresis: 5
-    gpu_type: nvidia
-```
-
-### Auto-splitting thresholds and speeds
-
-If you only specify 2 pairs of `temperatures` and `speeds` (e.g., `[40, 80]` and `[20, 80]`), the system will automatically split them into multiple steps based on the `hysteresis` value.
-
-The splitting logic:
-
-- The range between `temp_min` and `temp_max` will be divided into intervals of `hysteresis * 2`.
-- For each interval, a new threshold and corresponding speed will be generated, resulting in smoother fan speed transitions.
-
-**Example:**
-
-```yaml
-temperatures: [40, 80]
-speeds: [20, 80]
-hysteresis: 5
-```
-
-This will be automatically expanded to:
-
-```
-thresholds: [40.00, 50.00, 60.00, 70.00, 80.00]
-speeds: [20, 35, 50, 65, 80]
-```
-
-#### Additional Notes
-
-- `temperature_control_mode` (in `general`): Set to `max` to use the highest temperature for fan control, or `avg` to use the average.
-- `fan_control_mode` (in each host): Set to `manual` for script-controlled fan speed, or `automatic` to let hardware manage it.
-- `gpu_type`: Can be a string or an array, e.g., `nvidia` or `[nvidia, amd]`.
-- `ssh_credentials.key_path`: (Optional) Path to SSH private key for authentication.
-- VM objects under `vms` also support `gpu_type` as an array.
-
-### Multi-host and VM Support
-
-- Each host can define its own temperature thresholds, fan speeds, and credentials.
-- Hosts can include a `vms` list，each VM supports its own SSH credentials and GPU type。
-- The script will collect GPU temperatures from both the host and all defined VMs, and use the highest temperature for fan control.
-
-### Temperature Collection & Fan Control Logic
-
-- The script collects CPU and GPU temperatures for each host and its VMs.
-- If temperature data is missing or abnormal, the fan will run at the highest configured speed (the last value in `speeds`) for safety.
-- The maximum value among all CPU/GPU temperatures (including VMs) is used as the control temperature.
-- Fan speed is set according to the configured thresholds and speeds.
-- All temperature readings and control actions are recorded in the internal state for monitoring and debugging.
-
-## How it works
-
-Every `interval` seconds, the controller will collect CPU and GPU temperatures from all hosts and their VMs.  
-The highest temperature among all CPUs/GPUs (including VMs) is used as the control temperature to determine the fan speed.
-
-- If temperature data is missing or abnormal, the fan will run at the highest configured speed (the last value in `speeds`) for safety.
-- Fan speed is set according to the configured thresholds and speeds.
-- All temperature readings and control actions are recorded in the internal state for monitoring and debugging.
-
-Fan speed is determined by each temperature threshold and its corresponding speed. The number of thresholds/speeds can be any matching pair count.
-
-| Condition                        | Fan speed                                         |
-| -------------------------------- | ------------------------------------------------- |
-| _Tmax_ ≤ Threshold1              | Speed1                                            |
-| Threshold1 < _Tmax_ ≤ Threshold2 | Speed2                                            |
-| ...                              | ...                                               |
-| _Tmax_ > ThresholdN              | Highest configured speed (last value in `speeds`) |
-
-If `hysteresis` is set for a given host, the controller will wait for the temperature to go below _ThresholdN - hysteresis_ before lowering the fan speed.  
-For example: with a Threshold2 of 37°C and a hysteresis of 3°C, the fans won't slow down from Threshold3 to Threshold2 speed until the temperature reaches 34°C.
-
-## Read-only Web monitoring
-
-The controller includes a small TUI-style dashboard and JSON status endpoint. It shows CPU/GPU temperatures, VM GPU sources, control temperature, fan mode/speed, sensor status, errors, and the last update time.
-
-```yaml
-general:
-  web_enabled: true
-  web_host: 127.0.0.1
-  web_port: 8080
-  web_refresh_interval: 3
-```
-
-Open `http://127.0.0.1:8080/` on the controller host. `GET /api/status` returns the same read-only status as JSON. All mutation methods are rejected, and credentials are excluded from the schema.
-
-Changing `web_refresh_interval` is detected automatically. Already-open dashboards adopt the new interval after their next status request without a page reload.
-
-For remote viewing, keep the loopback binding and use an SSH tunnel:
+Keep the default loopback binding and use a tunnel for remote access:
 
 ```bash
 ssh -L 8080:127.0.0.1:8080 operator@controller-host
 ```
 
-Do not expose the built-in server directly to an untrusted network. Put it behind an authenticated TLS reverse proxy if shared access is required.
+The Web service has no authentication or TLS. Do not expose it directly to an untrusted network.
 
-## Security
+## Safety and recovery
 
-This project crosses privileged shell, SSH, IPMI, credential, dependency, and physical-cooling boundaries. Unknown SSH host keys are rejected, IPMI passwords are passed through standard input rather than process arguments, and debug configuration output is redacted. Administrator-configured sensor commands remain trusted shell input and must not be copied from untrusted sources.
+- Set the final configured speed high enough for your worst expected workload; fail-safe uses that value, not an unconditional 100% command.
+- Normal shutdown, `SIGTERM`, and accepted configuration reloads attempt to restore Dell automatic fan mode on every host configured as `manual`.
+- Recovery is best-effort. Power loss, `SIGKILL`, process/runtime failure, network loss, bad credentials, or an unavailable iDRAC can leave the last manual setting active.
+- Test sensor loss, graceful shutdown, controller-host restart, and iDRAC reachability before unattended operation. Confirm the resulting state through iDRAC, not only the dashboard.
+- Store IPMI/SSH credentials in a mode-`0600` configuration, prefer restricted SSH keys, and never commit secrets. Root execution and trusted shell sensor commands expand the impact of a compromised configuration.
 
-Report vulnerabilities through GitHub private vulnerability reporting as described in [SECURITY.md](SECURITY.md). Never include real credentials, private keys, public IP addresses, or identifying hardware data in issues or logs.
+Read the full [Security Policy](SECURITY.md) and [hardware compatibility criteria](COMPATIBILITY.md) before deployment.
 
-Verified and pending hardware reports are tracked in [COMPATIBILITY.md](COMPATIBILITY.md).
+## Relationship to upstream
 
-## Notes on remote hosts
+This repository originated from [nmaggioni/r710-fan-controller](https://github.com/nmaggioni/r710-fan-controller). The upstream project established the CPU-core-based IPMI fan-control approach, remote/multi-host operation, configuration, and shutdown recovery on which this project was built.
 
-This controller can monitor the temperature and change the fan speed of remote hosts too: the only caveat is that you'll need to extract the temperatures via an external command. This could be via SSH, for example. The controller expects such a command to return **a semicolon-delimited list of numbers parseable as floats**.
+This fork has continued evolving for GPU, virtualization, multi-host, and current deployment scenarios. Its main additions and redesigns include:
 
-**The included example is a good fit for a remote Proxmox VE host**: it will connect to it via SSH and extract the temperature of all CPU cores, one per line. This way you'll be able to manage that machine just as well as the local one without applying any hardly trackable modification to the base OS.
+- host and VM NVIDIA/AMD GPU collection, with combined CPU/GPU policy;
+- explicit missing-sensor fail-safe decisions and observable runtime health;
+- modular configuration, sensing, policy, IPMI, lifecycle, state, and Web components;
+- a read-only dashboard and JSON monitoring endpoint;
+- validated runtime configuration and Web-setting reloads;
+- safer IPMI password handling, SSH host-key verification, and redacted debug output;
+- hardened systemd packaging, remote-oriented Docker/Compose deployment, CI, and regression tests.
 
-## Credits
+These changes reflect a different operating scope, not a criticism of upstream. Historical credits and the original MIT copyright attribution are retained.
 
-Major thanks go to [NoLooseEnds's directions](https://github.com/NoLooseEnds/Scripts/tree/master/R710-IPMI-TEMP) for the core commands, [sulaweyo's ruby script](https://github.com/sulaweyo/r710-fan-control) for the idea of automating them, and [nmaggioni's r710-fan-controller](https://github.com/nmaggioni/r710-fan-controller) as the main forked project.
+## Project governance
 
-**Note:** The key difference of this script, other than handling remote hosts, is that it's based on the temperature of the CPUs' cores and not on the ambient temperature sensor on the server's motherboard.
+- Changes and notable history: [CHANGELOG.md](CHANGELOG.md)
+- Draft first release notes: [RELEASE_NOTES.md](RELEASE_NOTES.md)
+- Contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Release process: [RELEASING.md](RELEASING.md)
+- Security reports: [SECURITY.md](SECURITY.md)
+- Compatibility reports: [COMPATIBILITY.md](COMPATIBILITY.md)
+
+## Credits and license
+
+Thanks to [NoLooseEnds](https://github.com/NoLooseEnds/Scripts/tree/master/R710-IPMI-TEMP) for the core IPMI directions, [sulaweyo/r710-fan-control](https://github.com/sulaweyo/r710-fan-control) for the automation inspiration, and especially [Niccolò Maggioni's r710-fan-controller](https://github.com/nmaggioni/r710-fan-controller), from which this repository originated.
+
+Released under the [MIT License](LICENSE). The license retains `Copyright (c) 2019 Niccolò Maggioni`.

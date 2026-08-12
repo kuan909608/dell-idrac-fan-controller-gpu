@@ -1,0 +1,62 @@
+name: Feature request
+description: Propose a focused improvement with its operational and safety impact.
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: Do not include credentials, private addresses, hostnames, service tags, serial numbers, or unverified compatibility claims.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Describe the operator need or limitation, not only a preferred implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Explain the smallest end-to-end behavior that would solve the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Existing configuration, tools, or workflows you evaluated.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Primary area
+      options:
+        - temperature sensors
+        - control policy or fan curve
+        - IPMI or iDRAC
+        - Docker or systemd deployment
+        - Web monitoring
+        - configuration
+        - documentation or community
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Failure, security, and recovery impact
+      description: Describe sensor loss, process/network failure, credentials, privileges, automatic-mode recovery, and compatibility implications.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Relevant environment
+      description: Dell model/iDRAC, OS, GPU, and deployment only when relevant; distinguish tested facts from expectations.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Requester checklist
+      options:
+        - label: I searched existing issues and documentation for this capability.
+          required: true
+        - label: I have not presented untested hardware as compatible.
+          required: true

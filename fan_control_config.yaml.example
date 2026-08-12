@@ -3,7 +3,7 @@
 # All comments are in English for international users.
 
 general:
-  debug: false  # Enable debug mode
+  debug: true  # Safe first-run default: execute sensor checks, but only log planned IPMI changes
   interval: 60  # Monitoring interval in seconds
   temperature_control_mode: avg # Choose max or avg, determines fan control basis
   web_enabled: true  # Read-only monitoring dashboard

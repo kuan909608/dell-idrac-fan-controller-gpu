@@ -1,4 +1,3 @@
-import os
 from state import state
 from utils import CommandSpec, format_command, log, run_command
 

@@ -1,4 +1,3 @@
-import os
 from typing import List, Optional, Tuple
 from state import state
 from utils import log, run_command
