@@ -14,7 +14,7 @@
 
 The online installer runs the existing systemd installer as root. It installs operating-system and pinned Python dependencies, deploys a systemd unit, preserves an existing configuration, and restarts the service. Review the bootstrap and source tag before running the command.
 
-This prerelease does not establish hardware compatibility. The published installer was exercised end to end in a disposable Debian 13 container with systemd operations replaced by a no-op. It has not yet been installed on a physical PVE host as part of this release process.
+This prerelease does not establish hardware compatibility. The earlier `v1.1.0-rc.1` installer was exercised end to end in a disposable Debian 13 container with systemd operations replaced by a no-op. This RC2 installer has not yet been installed on a physical PVE host as part of this release process.
 
 ## Installation
 
