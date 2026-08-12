@@ -328,6 +328,8 @@ general:
 
 在控制器主機開啟 `http://127.0.0.1:8080/`；`GET /api/status` 會傳回相同的唯讀 JSON 狀態。所有修改方法都會被拒絕，輸出也不包含憑證。
 
+修改 `web_refresh_interval` 後會自動偵測；已開啟的儀表板會在下一次取得狀態時套用新週期，不必重新整理頁面。
+
 遠端查看時，建議維持 loopback 綁定並使用 SSH tunnel：
 
 ```bash

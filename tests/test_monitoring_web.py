@@ -21,10 +21,17 @@ class MonitoringWebTests(unittest.TestCase):
     def test_dashboard_uses_configured_refresh_interval_and_minimal_footer(self):
         dashboard = build_dashboard_html(7)
 
-        self.assertIn("<footer>AUTO REFRESH 7s</footer>", dashboard)
-        self.assertIn("setInterval(refresh,7000)", dashboard)
+        self.assertIn('<footer id="refresh-status">AUTO REFRESH 7s</footer>', dashboard)
+        self.assertIn("applyRefreshInterval(data.refresh_interval_seconds)", dashboard)
+        self.assertIn("clearInterval(refreshTimer)", dashboard)
+        self.assertIn("refreshTimer=setInterval(refresh,seconds*1000)", dashboard)
         self.assertNotIn("READ-ONLY //", dashboard)
         self.assertNotIn("LOCAL BINDING BY DEFAULT", dashboard)
+
+    def test_status_snapshot_exposes_dashboard_refresh_interval(self):
+        snapshot = build_status_snapshot({}, refresh_interval_seconds=7)
+
+        self.assertEqual(snapshot["refresh_interval_seconds"], 7)
 
     def test_status_snapshot_exposes_health_without_credentials(self):
         runtime_state = {

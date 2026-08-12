@@ -63,10 +63,15 @@ def _public_device(name, device, now, stale_after_seconds):
     }
 
 
-def build_status_snapshot(runtime_state: Mapping, stale_after_seconds=180) -> dict:
+def build_status_snapshot(
+    runtime_state: Mapping,
+    stale_after_seconds=180,
+    refresh_interval_seconds=3,
+) -> dict:
     now = datetime.now(timezone.utc)
     return {
         "generated_at": now.isoformat(),
+        "refresh_interval_seconds": refresh_interval_seconds,
         "hosts": [
             _public_device(host_name, host_state, now, stale_after_seconds)
             for host_name, host_state in sorted(runtime_state.items())
@@ -102,11 +107,14 @@ DASHBOARD_HTML_TEMPLATE = """<!doctype html>
 <body><main>
   <header><div><div class="dim">DELL POWEREDGE // HOMELAB AI THERMAL MONITOR</div><h1>iDRAC THERMAL CONSOLE</h1></div><div id="connection">CONNECTING...</div></header>
   <section id="hosts" aria-live="polite"></section>
-  <footer>AUTO REFRESH __REFRESH_SECONDS__s</footer>
+  <footer id="refresh-status">AUTO REFRESH __REFRESH_SECONDS__s</footer>
 </main>
 <script>
 const hosts = document.querySelector('#hosts');
 const connection = document.querySelector('#connection');
+const refreshStatus = document.querySelector('#refresh-status');
+let refreshIntervalSeconds = __REFRESH_SECONDS__;
+let refreshTimer;
 const el = (tag, text, cls) => { const node=document.createElement(tag); if(text!==undefined) node.textContent=text; if(cls) node.className=cls; return node; };
 const metric = (label, value) => { const box=el('div',undefined,'metric'); box.append(el('span',label,'dim'),el('b',value)); return box; };
 const temperatures = values => values && values.length ? values.map(v => `${Number(v).toFixed(1)}°C`).join('  ') : '--';
@@ -132,19 +140,26 @@ function hostCard(host) {
   if(host.vms && host.vms.length) { const vms=el('div',undefined,'vms'); vms.append(el('div','VM GPU SOURCES','dim')); host.vms.forEach(vm=>vms.append(vmRow(vm))); card.append(vms); }
   return card;
 }
+function applyRefreshInterval(value) {
+  const seconds=Number(value);
+  if(!Number.isInteger(seconds) || seconds<1 || seconds>3600) return;
+  refreshStatus.textContent=`AUTO REFRESH ${seconds}s`;
+  if(refreshTimer && seconds===refreshIntervalSeconds) return;
+  refreshIntervalSeconds=seconds;
+  clearInterval(refreshTimer);
+  refreshTimer=setInterval(refresh,seconds*1000);
+}
 async function refresh() {
-  try { const response=await fetch('/api/status',{cache:'no-store'}); if(!response.ok) throw new Error(`HTTP ${response.status}`); const data=await response.json(); hosts.replaceChildren(...data.hosts.map(hostCard)); if(!data.hosts.length) hosts.append(el('div','NO HOST DATA','dim')); connection.textContent='ONLINE'; connection.className='status-ok'; }
+  try { const response=await fetch('/api/status',{cache:'no-store'}); if(!response.ok) throw new Error(`HTTP ${response.status}`); const data=await response.json(); applyRefreshInterval(data.refresh_interval_seconds); hosts.replaceChildren(...data.hosts.map(hostCard)); if(!data.hosts.length) hosts.append(el('div','NO HOST DATA','dim')); connection.textContent='ONLINE'; connection.className='status-ok'; }
   catch(error) { connection.textContent=`OFFLINE // ${error.message}`; connection.className='status-error'; }
 }
-refresh(); setInterval(refresh,__REFRESH_MILLISECONDS__);
+applyRefreshInterval(__REFRESH_SECONDS__); refresh();
 </script></body></html>"""
 
 
 def build_dashboard_html(refresh_interval_seconds: int) -> str:
-    return (
-        DASHBOARD_HTML_TEMPLATE
-        .replace("__REFRESH_SECONDS__", str(refresh_interval_seconds))
-        .replace("__REFRESH_MILLISECONDS__", str(refresh_interval_seconds * 1000))
+    return DASHBOARD_HTML_TEMPLATE.replace(
+        "__REFRESH_SECONDS__", str(refresh_interval_seconds)
     )
 
 
@@ -165,7 +180,9 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path == "/api/status":
             payload = json.dumps(
                 build_status_snapshot(
-                    self.runtime_state, stale_after_seconds=self.stale_after_seconds
+                    self.runtime_state,
+                    stale_after_seconds=self.stale_after_seconds,
+                    refresh_interval_seconds=self.refresh_interval_seconds,
                 )
             ).encode("utf-8")
             self._headers(200, "application/json; charset=utf-8", len(payload))
@@ -211,6 +228,7 @@ class MonitoringServer:
             {
                 "runtime_state": runtime_state,
                 "stale_after_seconds": settings.stale_after_seconds,
+                "refresh_interval_seconds": settings.refresh_interval_seconds,
                 "dashboard_html": build_dashboard_html(settings.refresh_interval_seconds),
             },
         )

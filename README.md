@@ -349,6 +349,8 @@ general:
 
 Open `http://127.0.0.1:8080/` on the controller host. `GET /api/status` returns the same read-only status as JSON. All mutation methods are rejected, and credentials are excluded from the schema.
 
+Changing `web_refresh_interval` is detected automatically. Already-open dashboards adopt the new interval after their next status request without a page reload.
+
 For remote viewing, keep the loopback binding and use an SSH tunnel:
 
 ```bash
