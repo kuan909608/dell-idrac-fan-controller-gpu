@@ -39,6 +39,8 @@ def start_web_server(settings):
 def configure_hosts(config, controller):
     debug = config.general.get('debug', False)
     for host in config.hosts:
+        if host['name'] in state:
+            state[host['name']]['dry_run'] = debug
         thresholds_str = ", ".join(
             f"{t:.2f}°C ({s}%)" for t, s in zip(host['temperatures'], host['speeds'])
         )

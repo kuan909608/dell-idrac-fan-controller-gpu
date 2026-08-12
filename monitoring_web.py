@@ -42,12 +42,39 @@ def _public_error(error):
     return "Sensor read failed"
 
 
+def _control_state(device):
+    if device.get("dry_run"):
+        return "dry_run"
+    if device.get("fan_control_mode") == "manual":
+        return "script_control"
+    if device.get("fan_control_mode") == "automatic":
+        return "idrac_auto"
+    return "unknown"
+
+
+def _fan_display(device):
+    control_state = _control_state(device)
+    if control_state == "idrac_auto":
+        return "iDRAC AUTO"
+    labels = {
+        "dry_run": "DRY RUN",
+        "script_control": "SCRIPT CONTROL",
+    }
+    label = labels.get(control_state)
+    if label is None:
+        return "--"
+    speed = device.get("fan_speed")
+    return f"{'--' if speed is None else f'{speed}%'} / {label}"
+
+
 def _public_device(name, device, now, stale_after_seconds):
     status = device.get("sensor_status", "unknown")
     if status == "ok" and _is_stale(device.get("last_updated"), now, stale_after_seconds):
         status = "stale"
     return {
         "name": name,
+        "control_state": _control_state(device),
+        "fan_display": _fan_display(device),
         "fan_control_mode": device.get("fan_control_mode"),
         "fan_speed": device.get("fan_speed"),
         "cpu_temps": list(device.get("cpu_temps") or []),
@@ -134,7 +161,7 @@ function hostCard(host) {
   const card=el('article',undefined,'host'); const head=el('div',undefined,'host-head');
   head.append(el('strong',`[${host.name}]`),el('span',String(host.sensor_status||'unknown').toUpperCase(),`status-${host.sensor_status||'stale'}`));
   const grid=el('div',undefined,'grid');
-  grid.append(metric('CPU',temperatures(host.cpu_temps)),metric('GPU',temperatures(host.gpu_temps)),metric('CONTROL',host.control_temperature==null?'--':`${Number(host.control_temperature).toFixed(1)}°C`),metric('FAN',`${host.fan_speed??'--'}% / ${host.fan_control_mode??'--'}`),metric('UPDATED',timestamp(host.last_updated)));
+  grid.append(metric('CPU',temperatures(host.cpu_temps)),metric('GPU',temperatures(host.gpu_temps)),metric('CONTROL',host.control_temperature==null?'--':`${Number(host.control_temperature).toFixed(1)}°C`),metric('FAN',host.fan_display||'--'),metric('UPDATED',timestamp(host.last_updated)));
   card.append(head,grid);
   if(host.last_error) card.append(el('div',`! ${host.last_error}`,'status-error'));
   if(host.vms && host.vms.length) { const vms=el('div',undefined,'vms'); vms.append(el('div','VM GPU SOURCES','dim')); host.vms.forEach(vm=>vms.append(vmRow(vm))); card.append(vms); }

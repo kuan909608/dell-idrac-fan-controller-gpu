@@ -6,6 +6,7 @@ def init_state_from_config(hosts):
     for host in hosts:
         host_name = host['name']
         state[host_name] = {
+            'dry_run': False,
             'fan_control_mode': 'automatic',
             'fan_speed': 0,
             'temp_avg': None,
