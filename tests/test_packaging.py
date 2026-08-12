@@ -39,7 +39,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn('-v "./config:/config:ro"', readme)
 
     def test_compose_uses_safe_controller_lifecycle_and_mounts(self):
-        compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
+        compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
 
         for expected in [
             '"127.0.0.1:8080:8080"',

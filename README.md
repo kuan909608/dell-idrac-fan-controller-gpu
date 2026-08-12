@@ -91,7 +91,7 @@ The controller detects changes to `fan_control_config.yaml` before the next cont
 
 #### Docker Compose
 
-The included `compose.yaml` uses the same loopback-only dashboard, reloadable configuration directory, SSH keys, and verified `known_hosts` mounts:
+The included `docker-compose.yml` uses the same loopback-only dashboard, reloadable configuration directory, SSH keys, and verified `known_hosts` mounts:
 
 ```bash
 mkdir -p config keys

@@ -92,7 +92,7 @@ docker run -d --restart=always --name fan_control \
 
 #### Docker Compose
 
-內附的 `compose.yaml` 使用相同的 loopback-only 儀表板、可熱重載設定目錄、SSH keys 與已驗證的 `known_hosts` 掛載：
+內附的 `docker-compose.yml` 使用相同的 loopback-only 儀表板、可熱重載設定目錄、SSH keys 與已驗證的 `known_hosts` 掛載：
 
 ```bash
 mkdir -p config keys
