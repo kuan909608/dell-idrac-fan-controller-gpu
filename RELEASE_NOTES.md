@@ -1,6 +1,4 @@
-# Draft release notes: v1.0.0
-
-> Maintainer review draft. No Git tag or GitHub Release has been created.
+# v1.0.0
 
 `v1.0.0` is proposed as the first formal release of Dell iDRAC Fan Controller with GPU Support. It establishes a documented, tested baseline for operators who need CPU and accelerator temperatures to drive Dell PowerEdge fan curves in Proxmox VE, homelab, AI server, and other GPU workload environments.
 

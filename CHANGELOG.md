@@ -4,6 +4,8 @@ All notable user-facing changes to this project are documented here. The project
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-12
+
 ### Added
 
 - Draft release notes and a maintainer release checklist for the proposed `v1.0.0` release.
