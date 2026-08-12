@@ -11,6 +11,7 @@ from typing import Mapping
 class WebSettings:
     host: str = "127.0.0.1"
     port: int = 8080
+    refresh_interval_seconds: int = 3
     stale_after_seconds: float = 180
 
 
@@ -73,7 +74,7 @@ def build_status_snapshot(runtime_state: Mapping, stale_after_seconds=180) -> di
     }
 
 
-DASHBOARD_HTML = """<!doctype html>
+DASHBOARD_HTML_TEMPLATE = """<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -101,7 +102,7 @@ DASHBOARD_HTML = """<!doctype html>
 <body><main>
   <header><div><div class="dim">DELL POWEREDGE // HOMELAB AI THERMAL MONITOR</div><h1>iDRAC THERMAL CONSOLE</h1></div><div id="connection">CONNECTING...</div></header>
   <section id="hosts" aria-live="polite"></section>
-  <footer>READ-ONLY // LOCAL BINDING BY DEFAULT // AUTO REFRESH 3s</footer>
+  <footer>AUTO REFRESH __REFRESH_SECONDS__s</footer>
 </main>
 <script>
 const hosts = document.querySelector('#hosts');
@@ -135,8 +136,16 @@ async function refresh() {
   try { const response=await fetch('/api/status',{cache:'no-store'}); if(!response.ok) throw new Error(`HTTP ${response.status}`); const data=await response.json(); hosts.replaceChildren(...data.hosts.map(hostCard)); if(!data.hosts.length) hosts.append(el('div','NO HOST DATA','dim')); connection.textContent='ONLINE'; connection.className='status-ok'; }
   catch(error) { connection.textContent=`OFFLINE // ${error.message}`; connection.className='status-error'; }
 }
-refresh(); setInterval(refresh,3000);
+refresh(); setInterval(refresh,__REFRESH_MILLISECONDS__);
 </script></body></html>"""
+
+
+def build_dashboard_html(refresh_interval_seconds: int) -> str:
+    return (
+        DASHBOARD_HTML_TEMPLATE
+        .replace("__REFRESH_SECONDS__", str(refresh_interval_seconds))
+        .replace("__REFRESH_MILLISECONDS__", str(refresh_interval_seconds * 1000))
+    )
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -162,7 +171,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._headers(200, "application/json; charset=utf-8", len(payload))
             self.wfile.write(payload)
         elif self.path == "/":
-            payload = DASHBOARD_HTML.encode("utf-8")
+            payload = self.dashboard_html.encode("utf-8")
             self._headers(200, "text/html; charset=utf-8", len(payload))
             self.wfile.write(payload)
         elif self.path == "/favicon.ico":
@@ -202,6 +211,7 @@ class MonitoringServer:
             {
                 "runtime_state": runtime_state,
                 "stale_after_seconds": settings.stale_after_seconds,
+                "dashboard_html": build_dashboard_html(settings.refresh_interval_seconds),
             },
         )
         self._server = _MonitoringHTTPServer((settings.host, settings.port), handler)

@@ -156,6 +156,7 @@ docker compose logs -f
 | `web_enabled`                    | 是否啟用唯讀監控頁面                                 |
 | `web_host`                       | 監控服務綁定位址，預設 `127.0.0.1`                   |
 | `web_port`                       | 監控服務 TCP port，預設 `8080`                       |
+| `web_refresh_interval`           | 儀表板自動刷新秒數，預設 `3`（範圍：1–3600）        |
 | `cpu_temperature_command`        | 取得 CPU 溫度的 shell 指令（以分號分隔）               |
 | `gpu_temperature_command_nvidia` | 取得 NVIDIA GPU 溫度的 shell 指令（以分號分隔）        |
 | `gpu_temperature_command_amd`    | 取得 AMD GPU 溫度的 shell 指令（以分號分隔）           |
@@ -301,6 +302,7 @@ general:
   web_enabled: true
   web_host: 127.0.0.1
   web_port: 8080
+  web_refresh_interval: 3
 ```
 
 在控制器主機開啟 `http://127.0.0.1:8080/`；`GET /api/status` 會傳回相同的唯讀 JSON 狀態。所有修改方法都會被拒絕，輸出也不包含憑證。

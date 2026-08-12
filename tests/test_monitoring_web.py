@@ -4,7 +4,12 @@ import unittest
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from monitoring_web import MonitoringServer, WebSettings, build_status_snapshot
+from monitoring_web import (
+    MonitoringServer,
+    WebSettings,
+    build_dashboard_html,
+    build_status_snapshot,
+)
 
 
 class MonitoringWebTests(unittest.TestCase):
@@ -12,6 +17,14 @@ class MonitoringWebTests(unittest.TestCase):
         settings = WebSettings()
 
         self.assertEqual(settings.host, "127.0.0.1")
+
+    def test_dashboard_uses_configured_refresh_interval_and_minimal_footer(self):
+        dashboard = build_dashboard_html(7)
+
+        self.assertIn("<footer>AUTO REFRESH 7s</footer>", dashboard)
+        self.assertIn("setInterval(refresh,7000)", dashboard)
+        self.assertNotIn("READ-ONLY //", dashboard)
+        self.assertNotIn("LOCAL BINDING BY DEFAULT", dashboard)
 
     def test_status_snapshot_exposes_health_without_credentials(self):
         runtime_state = {

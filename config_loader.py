@@ -38,6 +38,7 @@ class Config:
             'web_enabled': True,
             'web_host': '127.0.0.1',
             'web_port': 8080,
+            'web_refresh_interval': 3,
             'cpu_temperature_command': 'sensors | grep -E "Core [0-9]+:" | awk \'{print $3}\' | sed \'s/+//;s/°C//\' | paste -sd \';\' -',
             'gpu_temperature_command_nvidia': 'nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits | paste -sd \';\' -',
             'gpu_temperature_command_amd': 'rocm-smi --showtemp | grep -E "Temp" | awk \'{print $2}\' | sed \'s/[^0-9.]//g\' | paste -sd \';\' -'
@@ -77,6 +78,7 @@ class Config:
         self.general['web_enabled'] = general_config.get('web_enabled', True)
         self.general['web_host'] = general_config.get('web_host', '127.0.0.1')
         self.general['web_port'] = general_config.get('web_port', 8080)
+        self.general['web_refresh_interval'] = general_config.get('web_refresh_interval', 3)
         self.general['cpu_temperature_command'] = general_config.get('cpu_temperature_command', 'sensors | grep -E "Core [0-9]+:" | awk \'{print $3}\' | sed \'s/+//;s/°C//\' | paste -sd \';\' -')
         self.general['gpu_temperature_command_nvidia'] = general_config.get('gpu_temperature_command_nvidia', 'nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits | paste -sd \';\' -')
         self.general['gpu_temperature_command_amd'] = general_config.get('gpu_temperature_command_amd', 'rocm-smi --showtemp | grep -E "Temp" | awk \'{print $2}\' | sed \'s/[^0-9.]//g\' | paste -sd \';\' -')
@@ -94,6 +96,12 @@ class Config:
             raise ConfigError('general.web_host must be a non-empty string.')
         if not isinstance(self.general['web_port'], int) or not 1 <= self.general['web_port'] <= 65535:
             raise ConfigError('general.web_port must be an integer from 1 to 65535.')
+        if (
+            not isinstance(self.general['web_refresh_interval'], int)
+            or isinstance(self.general['web_refresh_interval'], bool)
+            or not 1 <= self.general['web_refresh_interval'] <= 3600
+        ):
+            raise ConfigError('general.web_refresh_interval must be an integer from 1 to 3600.')
         for command_name in [
             'cpu_temperature_command',
             'gpu_temperature_command_nvidia',

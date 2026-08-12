@@ -21,6 +21,7 @@ def web_settings(config):
     return WebSettings(
         host=config.general.get('web_host', '127.0.0.1'),
         port=config.general.get('web_port', 8080),
+        refresh_interval_seconds=config.general.get('web_refresh_interval', 3),
         stale_after_seconds=max(180, config.general.get('interval', 60) * 3),
     )
 

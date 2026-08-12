@@ -154,6 +154,7 @@ The configuration file contains two main sections: `general` and `hosts`.
 | `web_enabled`                    | Enable the read-only monitoring dashboard.                                                        |
 | `web_host`                       | Monitoring bind address; defaults to `127.0.0.1`.                                                 |
 | `web_port`                       | Monitoring TCP port; defaults to `8080`.                                                          |
+| `web_refresh_interval`           | Dashboard refresh interval in seconds; defaults to `3` (range: 1–3600).                           |
 | `cpu_temperature_command`        | Shell command to get CPU temperatures (semicolon separated).                                      |
 | `gpu_temperature_command_nvidia` | Shell command to get NVIDIA GPU temperatures (semicolon separated).                               |
 | `gpu_temperature_command_amd`    | Shell command to get AMD GPU temperatures (semicolon separated).                                  |
@@ -322,6 +323,7 @@ general:
   web_enabled: true
   web_host: 127.0.0.1
   web_port: 8080
+  web_refresh_interval: 3
 ```
 
 Open `http://127.0.0.1:8080/` on the controller host. `GET /api/status` returns the same read-only status as JSON. All mutation methods are rejected, and credentials are excluded from the schema.

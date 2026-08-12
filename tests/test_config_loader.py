@@ -29,7 +29,12 @@ class ConfigLoaderTests(unittest.TestCase):
     def test_web_settings_are_loaded_without_exposing_the_service_by_default(self):
         config = load_config(
             {
-                "general": {"web_enabled": False, "web_host": "127.0.0.2", "web_port": 9090},
+                "general": {
+                    "web_enabled": False,
+                    "web_host": "127.0.0.2",
+                    "web_port": 9090,
+                    "web_refresh_interval": 7,
+                },
                 "hosts": [base_host()],
             }
         )
@@ -37,6 +42,17 @@ class ConfigLoaderTests(unittest.TestCase):
         self.assertFalse(config.general["web_enabled"])
         self.assertEqual(config.general["web_host"], "127.0.0.2")
         self.assertEqual(config.general["web_port"], 9090)
+        self.assertEqual(config.general["web_refresh_interval"], 7)
+
+    def test_rejects_invalid_web_refresh_interval(self):
+        for value in (True, 0, 3601, 1.5):
+            with self.subTest(value=value), self.assertRaises(ConfigError):
+                load_config(
+                    {
+                        "general": {"web_refresh_interval": value},
+                        "hosts": [base_host()],
+                    }
+                )
 
     def test_rejects_fan_speeds_outside_ipmi_percentage_range(self):
         host = base_host()
