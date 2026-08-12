@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
+import os
 import signal
 import sys
 import time
 import datetime
 
-from config_loader import Config, ConfigError
+from config_loader import Config, ConfigError, ConfigWatcher
 from state import state, init_state_from_config
 from fan_controller import FanController
 from temp_monitor import TempMonitor
@@ -14,26 +15,105 @@ from control_policy import SensorSnapshot, determine_control_temperature
 from lifecycle import restore_automatic_control
 from monitoring_web import MonitoringServer, WebSettings
 
+def web_settings(config):
+    if not config.general.get('web_enabled', True):
+        return None
+    return WebSettings(
+        host=config.general.get('web_host', '127.0.0.1'),
+        port=config.general.get('web_port', 8080),
+        stale_after_seconds=max(180, config.general.get('interval', 60) * 3),
+    )
+
+
+def start_web_server(settings):
+    if settings is None:
+        return None
+    server = MonitoringServer(state, settings)
+    server.start()
+    web_host, web_port = server.address
+    log("INFO", "web", f"Read-only monitoring available at http://{web_host}:{web_port}")
+    return server
+
+
+def configure_hosts(config, controller):
+    debug = config.general.get('debug', False)
+    for host in config.hosts:
+        thresholds_str = ", ".join(
+            f"{t:.2f}°C ({s}%)" for t, s in zip(host['temperatures'], host['speeds'])
+        )
+        log("INFO", host['name'], f"Host temperature thresholds: {thresholds_str}")
+        log("INFO", host['name'], f"Host temperature hysteresis: {host['hysteresis']:.2f}°C")
+        controller.set_fan_control(host.get('fan_control_mode', 'manual'), host)
+        if debug:
+            log("DEBUG", host['name'], f"Host config: {redact_mapping(host)}")
+
+
+def apply_config_reload(config, candidate, controller, monitor, on_reload=None):
+    old_hosts = config.hosts
+    failures = restore_automatic_control(controller, old_hosts, logger=log)
+    if failures:
+        log(
+            "ERROR",
+            "CONFIG",
+            "Configuration reload rejected; failed to restore automatic fan control for: "
+            + ", ".join(failures),
+            file=sys.stderr,
+        )
+        configure_hosts(config, controller)
+        return False
+
+    try:
+        if on_reload:
+            on_reload(candidate)
+    except Exception as exc:
+        log("ERROR", "CONFIG", f"Configuration reload rejected: {exc}", file=sys.stderr)
+        configure_hosts(config, controller)
+        return False
+
+    config.general = candidate.general
+    config.hosts = candidate.hosts
+    controller.config = config
+    monitor.config = config
+    init_state_from_config(config.hosts)
+    configure_hosts(config, controller)
+    log("INFO", "CONFIG", "Configuration reloaded successfully.")
+    return True
+
+
 def main(config_path="fan_control_config.yaml"):
     config = Config(config_path)
+    config_watcher = ConfigWatcher(config_path)
     init_state_from_config(config.hosts)
     controller = FanController(config)
     monitor = TempMonitor(config)
-    web_server = None
-    if config.general.get('web_enabled', True):
-        web_server = MonitoringServer(
-            state,
-            WebSettings(
-                host=config.general.get('web_host', '127.0.0.1'),
-                port=config.general.get('web_port', 8080),
-                stale_after_seconds=max(180, config.general.get('interval', 60) * 3),
-            ),
-        )
-        web_server.start()
-        web_host, web_port = web_server.address
-        log("INFO", "web", f"Read-only monitoring available at http://{web_host}:{web_port}")
+    current_web_settings = web_settings(config)
+    web_server = start_web_server(current_web_settings)
+
+    def reconfigure_web(candidate):
+        nonlocal web_server, current_web_settings
+        next_settings = web_settings(candidate)
+        if next_settings == current_web_settings:
+            return
+
+        previous_settings = current_web_settings
+        if web_server:
+            web_server.stop()
+            web_server = None
+        try:
+            web_server = start_web_server(next_settings)
+        except Exception:
+            web_server = start_web_server(previous_settings)
+            raise
+        current_web_settings = next_settings
+
     try:
-        run_controller(config, controller, monitor)
+        run_controller(
+            config,
+            controller,
+            monitor,
+            config_watcher=config_watcher,
+            on_reload=reconfigure_web,
+        )
     finally:
         if web_server:
             web_server.stop()
@@ -47,23 +127,29 @@ def main(config_path="fan_control_config.yaml"):
             )
 
 
-def run_controller(config, controller, monitor):
-    debug = config.general.get('debug', False)
-    for host in config.hosts:
-        thresholds_str = ", ".join(
-            f"{t:.2f}°C ({s}%)" for t, s in zip(host['temperatures'], host['speeds'])
-        )
-        log("INFO", host['name'], f"Host temperature thresholds: {thresholds_str}")
-        log("INFO", host['name'], f"Host temperature hysteresis: {host['hysteresis']:.2f}°C")
-        controller.set_fan_control(host.get('fan_control_mode', 'manual'), host)
-        if debug:
-            log("DEBUG", host['name'], f"Host config: {redact_mapping(host)}")
-
+def run_controller(config, controller, monitor, config_watcher=None, on_reload=None):
+    configure_hosts(config, controller)
     log("INFO", "main", "=" * 50)
     log("INFO", "main", "Initialization complete. Start main loop.")
     log("INFO", "main", "=" * 50)
     
     while True:
+        if config_watcher:
+            try:
+                candidate = config_watcher.load_if_changed()
+                if candidate:
+                    apply_config_reload(
+                        config, candidate, controller, monitor, on_reload=on_reload
+                    )
+            except (ConfigError, OSError, RuntimeError) as exc:
+                log(
+                    "ERROR",
+                    "CONFIG",
+                    f"Configuration reload rejected; keeping previous settings: {exc}",
+                    file=sys.stderr,
+                )
+
+        debug = config.general.get('debug', False)
         for host in config.hosts:
             log("INFO", host['name'], "-" * 50)
             ip = (
@@ -172,7 +258,7 @@ if __name__ == "__main__":
     signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(0))
 
     try:
-        main()
+        main(os.environ.get("FAN_CONTROL_CONFIG", "fan_control_config.yaml"))
     except ConfigError as e:
         log("ERROR", "MAIN", "Configuration error: {}".format(e), file=sys.stderr)
         sys.exit(0)

@@ -73,16 +73,21 @@ To deploy remote fan management with Docker (`fan_control` running on a separate
 ```bash
 git clone https://github.com/kuan909608/dell-idrac-fan-controller-gpu.git
 cd dell-idrac-fan-controller-gpu
+mkdir -p config
+cp fan_control_config.yaml.example config/fan_control_config.yaml
+chmod 600 config/fan_control_config.yaml
 docker build -t fan_control .
 docker run -d --restart=always --name fan_control \
   -p 127.0.0.1:8080:8080 \
-  -v "./fan_control_config.yaml:/app/fan_control_config.yaml:ro" \
+  -v "./config:/config:ro" \
   -v "./keys:/app/keys:ro" \
   -v "$HOME/.ssh/known_hosts:/root/.ssh/known_hosts:ro" \
   fan_control
 ```
 
 For Docker Web monitoring, set `general.web_host: 0.0.0.0` inside the container. The `-p 127.0.0.1:8080:8080` mapping above still restricts access to the Docker host; use the documented SSH tunnel for remote viewing.
+
+The controller detects changes to `fan_control_config.yaml` before the next control cycle. A changed file is fully validated before use; invalid updates are rejected while the last valid configuration remains active. Reloading a manual-control configuration first restores Dell automatic mode, then applies the validated replacement. Docker deployments must mount the configuration directory as shown above so editors that atomically replace the YAML file remain visible inside the container.
 
 Running this tool under a proper orchestrator is advised.
 
@@ -117,6 +122,8 @@ Running this tool under a proper orchestrator is advised.
 ## Configuration
 
 You can tune the controller's settings via the `fan_control_config.yaml` file in the installation directory.
+
+Saved changes are loaded automatically before the next control cycle; restarting the process or container is not required. Invalid files are rejected and the last valid settings remain active.
 
 ### Configuration File Structure
 

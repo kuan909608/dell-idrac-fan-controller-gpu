@@ -74,16 +74,21 @@ sudo ./install.sh [<安裝路徑>]
 ```bash
 git clone https://github.com/kuan909608/dell-idrac-fan-controller-gpu.git
 cd dell-idrac-fan-controller-gpu
+mkdir -p config
+cp fan_control_config.yaml.example config/fan_control_config.yaml
+chmod 600 config/fan_control_config.yaml
 docker build -t fan_control .
 docker run -d --restart=always --name fan_control \
   -p 127.0.0.1:8080:8080 \
-  -v "./fan_control_config.yaml:/app/fan_control_config.yaml:ro" \
+  -v "./config:/config:ro" \
   -v "./keys:/app/keys:ro" \
   -v "$HOME/.ssh/known_hosts:/root/.ssh/known_hosts:ro" \
   fan_control
 ```
 
 若要在 Docker 使用 Web 監控，容器內設定需使用 `general.web_host: 0.0.0.0`。上述 `-p 127.0.0.1:8080:8080` 仍只允許 Docker 主機本機存取；遠端查看請使用文件中的 SSH tunnel。
+
+控制器會在下一個控制週期前偵測 `fan_control_config.yaml` 的變更。新檔案必須完整通過驗證才會套用；無效設定會被拒絕，並繼續使用上一份有效設定。重新載入手動控制設定時，程式會先恢復 Dell automatic 模式，再套用驗證完成的新設定。Docker 必須依照上例掛載整個設定目錄，才能讓編輯器以原子取代方式儲存的 YAML 在容器內保持可見。
 
 建議於正式環境搭配 Orchestrator 使用。
 
@@ -118,6 +123,8 @@ docker run -d --restart=always --name fan_control \
 ## 設定說明
 
 請編輯安裝目錄下的 `fan_control_config.yaml` 進行設定。
+
+儲存後會在下一個控制週期前自動載入，不必重新啟動程序或容器。無效設定會被拒絕，並繼續使用上一份有效設定。
 
 ### 設定檔結構
 

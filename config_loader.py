@@ -7,6 +7,28 @@ from utils import log, auto_split_thresholds
 class ConfigError(Exception):
     pass
 
+
+class ConfigWatcher:
+    """Return a validated candidate whenever the configuration file changes."""
+
+    def __init__(self, config_path="fan_control_config.yaml"):
+        self.config_path = config_path
+        self._observed_signature = self._file_signature()
+
+    def _file_signature(self):
+        try:
+            stat = os.stat(self.config_path)
+        except FileNotFoundError:
+            return None
+        return (stat.st_dev, stat.st_ino, stat.st_mtime_ns, stat.st_size)
+
+    def load_if_changed(self):
+        signature = self._file_signature()
+        if signature == self._observed_signature:
+            return None
+        self._observed_signature = signature
+        return Config(self.config_path)
+
 class Config:
     def __init__(self, config_path="fan_control_config.yaml"):
         self.general = {

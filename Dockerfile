@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y ipmitool && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
+ENV FAN_CONTROL_CONFIG=/config/fan_control_config.yaml
 
 # Copy requirements.txt and install Python packages
 COPY requirements.txt ./
