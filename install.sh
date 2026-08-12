@@ -13,8 +13,8 @@ TARGETDIR="/opt/fan_control"
 if [ -n "${1:-}" ]; then
     TARGETDIR="$1"
 fi
-if [[ ! "$TARGETDIR" =~ ^/[A-Za-z0-9._/-]+$ ]]; then
-    echo "The installation path must be absolute and contain only letters, numbers, '.', '_', '-', and '/'."
+if [[ ! "$TARGETDIR" =~ ^/opt/[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+    echo "The installation path must be a dedicated directory directly under /opt."
     exit 1
 fi
 

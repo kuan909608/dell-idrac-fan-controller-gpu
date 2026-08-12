@@ -67,6 +67,14 @@ class PackagingContractTests(unittest.TestCase):
         for dependency in dependency_lines:
             self.assertRegex(dependency, r"^[A-Za-z0-9_.-]+==[^=]+$")
 
+    def test_installer_restricts_the_root_owned_install_target(self):
+        installer = (ROOT / "install.sh").read_text(encoding="utf-8")
+
+        self.assertIn(
+            '[[ ! "$TARGETDIR" =~ ^/opt/[A-Za-z0-9][A-Za-z0-9._-]*$ ]]',
+            installer,
+        )
+
     def test_docker_build_context_excludes_local_secrets(self):
         dockerignore = (ROOT / ".dockerignore").read_text(encoding="utf-8")
 
@@ -86,6 +94,14 @@ class PackagingContractTests(unittest.TestCase):
         self.assertNotIn("COPY . .", dockerfile)
         for filename in self.runtime_files:
             self.assertIn(filename, dockerfile)
+
+    def test_ci_builds_and_import_checks_the_docker_image(self):
+        workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("docker build", workflow)
+        self.assertIn("import main", workflow)
 
     def test_compose_uses_safe_controller_lifecycle_and_mounts(self):
         compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")

@@ -33,6 +33,11 @@ jobs:
           cp main.py "$install_root/main.py"
           sed "s#{TARGETDIR}#$install_root#g" fan-control.service > "$unit_path"
           systemd-analyze verify "$unit_path"
+      - name: Build and smoke-test Docker image
+        run: |
+          docker build --tag dell-idrac-fan-controller-gpu:ci .
+          docker run --rm --entrypoint python dell-idrac-fan-controller-gpu:ci \
+            -c 'import main; print("startup-import-ok")'
 
   dependency-review:
     if: github.event_name == 'pull_request'
