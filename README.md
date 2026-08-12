@@ -57,7 +57,15 @@ Sensor commands are administrator-provided shell pipelines and must return semic
 
 ## Install with systemd
 
-Use this mode when the controller runs on the server whose local sensors it reads. From a repository checkout:
+Use this mode when the controller runs on the server whose local sensors it reads. For a one-command installation on the host, run:
+
+```bash
+bash -c "$(curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/kuan909608/dell-idrac-fan-controller-gpu/v1.1.0-rc.2/install-online.sh)"
+```
+
+The bootstrap and downloaded source archive are both pinned to `v1.1.0-rc.2`. Review scripts downloaded from the internet before running them as root. This is a prerelease installer intended for validation before `v1.1.0`.
+
+Alternatively, install from a repository checkout:
 
 ```bash
 git clone https://github.com/kuan909608/dell-idrac-fan-controller-gpu.git
