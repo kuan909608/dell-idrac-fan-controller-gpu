@@ -89,6 +89,21 @@ For Docker Web monitoring, set `general.web_host: 0.0.0.0` inside the container.
 
 The controller detects changes to `fan_control_config.yaml` before the next control cycle. A changed file is fully validated before use; invalid updates are rejected while the last valid configuration remains active. Reloading a manual-control configuration first restores Dell automatic mode, then applies the validated replacement. Docker deployments must mount the configuration directory as shown above so editors that atomically replace the YAML file remain visible inside the container.
 
+#### Docker Compose
+
+The included `compose.yaml` uses the same loopback-only dashboard, reloadable configuration directory, SSH keys, and verified `known_hosts` mounts:
+
+```bash
+mkdir -p config keys
+cp fan_control_config.yaml.example config/fan_control_config.yaml
+chmod 600 config/fan_control_config.yaml
+test -f "$HOME/.ssh/known_hosts"
+docker compose up -d --build
+docker compose logs -f
+```
+
+Use `docker compose down` for a graceful stop. Compose allows 30 seconds for the controller to restore Dell automatic fan mode. Do not run this service at the same time as a systemd or standalone Docker deployment controlling the same server.
+
 Running this tool under a proper orchestrator is advised.
 
 ---

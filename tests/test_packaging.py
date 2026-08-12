@@ -38,6 +38,19 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("ENV FAN_CONTROL_CONFIG=/config/fan_control_config.yaml", dockerfile)
         self.assertIn('-v "./config:/config:ro"', readme)
 
+    def test_compose_uses_safe_controller_lifecycle_and_mounts(self):
+        compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
+
+        for expected in [
+            '"127.0.0.1:8080:8080"',
+            "./config:/config:ro",
+            "./keys:/app/keys:ro",
+            "known_hosts:/root/.ssh/known_hosts:ro",
+            "restart: unless-stopped",
+            "stop_grace_period: 30s",
+        ]:
+            self.assertIn(expected, compose)
+
     def test_systemd_unit_applies_root_service_hardening(self):
         service = (ROOT / "fan-control.service").read_text(encoding="utf-8")
 

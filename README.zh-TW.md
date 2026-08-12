@@ -90,6 +90,21 @@ docker run -d --restart=always --name fan_control \
 
 控制器會在下一個控制週期前偵測 `fan_control_config.yaml` 的變更。新檔案必須完整通過驗證才會套用；無效設定會被拒絕，並繼續使用上一份有效設定。重新載入手動控制設定時，程式會先恢復 Dell automatic 模式，再套用驗證完成的新設定。Docker 必須依照上例掛載整個設定目錄，才能讓編輯器以原子取代方式儲存的 YAML 在容器內保持可見。
 
+#### Docker Compose
+
+內附的 `compose.yaml` 使用相同的 loopback-only 儀表板、可熱重載設定目錄、SSH keys 與已驗證的 `known_hosts` 掛載：
+
+```bash
+mkdir -p config keys
+cp fan_control_config.yaml.example config/fan_control_config.yaml
+chmod 600 config/fan_control_config.yaml
+test -f "$HOME/.ssh/known_hosts"
+docker compose up -d --build
+docker compose logs -f
+```
+
+請使用 `docker compose down` 正常停止服務。Compose 會保留 30 秒讓控制器恢復 Dell automatic 風扇模式。請勿同時執行控制同一台伺服器的 systemd 或獨立 Docker 部署。
+
 建議於正式環境搭配 Orchestrator 使用。
 
 ---

@@ -1,0 +1,15 @@
+services:
+  fan-control:
+    build:
+      context: .
+    image: dell-idrac-fan-controller-gpu:local
+    container_name: fan_control
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./config:/config:ro
+      - ./keys:/app/keys:ro
+      - ${HOME}/.ssh/known_hosts:/root/.ssh/known_hosts:ro
