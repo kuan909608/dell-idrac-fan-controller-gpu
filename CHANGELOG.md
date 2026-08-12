@@ -4,6 +4,12 @@ All notable user-facing changes to this project are documented here. The project
 
 ## [Unreleased]
 
+## [1.1.0-rc.2] - 2026-08-12
+
+### Changed
+
+- Clean up the online installer's temporary source archive after installation completes.
+
 ## [1.1.0-rc.1] - 2026-08-12
 
 ### Added

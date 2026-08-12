@@ -3,7 +3,7 @@
 set -euo pipefail
 
 readonly REPOSITORY="kuan909608/dell-idrac-fan-controller-gpu"
-readonly VERSION="v1.1.0-rc.1"
+readonly VERSION="v1.1.0-rc.2"
 readonly TARGETDIR="${1:-/opt/fan_control}"
 
 for command_name in curl tar; do
@@ -38,4 +38,4 @@ if [ ! -x "$source_dir/install.sh" ] || [ ! -f "$source_dir/requirements.txt" ];
     exit 1
 fi
 
-exec bash "$source_dir/install.sh" "$TARGETDIR"
+bash "$source_dir/install.sh" "$TARGETDIR"

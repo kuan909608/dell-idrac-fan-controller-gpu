@@ -70,12 +70,13 @@ class PackagingContractTests(unittest.TestCase):
     def test_online_installer_only_bootstraps_the_repository_installer(self):
         bootstrap = (ROOT / "install-online.sh").read_text(encoding="utf-8")
 
-        self.assertIn('readonly VERSION="v1.1.0-rc.1"', bootstrap)
+        self.assertIn('readonly VERSION="v1.1.0-rc.2"', bootstrap)
         self.assertIn(
             "https://github.com/$REPOSITORY/archive/$VERSION.tar.gz", bootstrap
         )
         self.assertIn("--proto '=https'", bootstrap)
-        self.assertIn('exec bash "$source_dir/install.sh" "$TARGETDIR"', bootstrap)
+        self.assertIn('bash "$source_dir/install.sh" "$TARGETDIR"', bootstrap)
+        self.assertNotIn('exec bash "$source_dir/install.sh"', bootstrap)
         self.assertNotIn("apt-get install", bootstrap)
         self.assertNotIn("systemctl", bootstrap)
 
