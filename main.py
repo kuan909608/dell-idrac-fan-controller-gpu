@@ -26,6 +26,7 @@ def main(config_path="fan_control_config.yaml"):
             WebSettings(
                 host=config.general.get('web_host', '127.0.0.1'),
                 port=config.general.get('web_port', 8080),
+                stale_after_seconds=max(180, config.general.get('interval', 60) * 3),
             ),
         )
         web_server.start()
@@ -75,35 +76,46 @@ def run_controller(config, controller, monitor):
 
             try:
                 cpu_temps = monitor.get_cpu_temps(host)
-                gpu_temps = monitor.get_gpu_temps(host)
+                gpu_temps, host_gpu_error = monitor.get_gpu_temps(host)
                 if debug:
                     log("DEBUG", host['name'], f"Host CPU temperature: {cpu_temps}")
                     log("DEBUG", host['name'], f"Host GPU temperature: {gpu_temps}")
 
                 vm_gpu_temps = []
+                gpu_source_errors = []
+                if host.get('gpu_type') and not gpu_temps:
+                    gpu_source_errors.append(host_gpu_error or 'Host GPU temperature unavailable')
                 if 'vms' in host and isinstance(host['vms'], list):
                     for vm in host['vms']:
-                        temps = monitor.get_gpu_temps(host, vm['name'])
+                        temps, vm_error = monitor.get_gpu_temps(host, vm['name'])
                         if debug:
                             log("DEBUG", host['name'], f"VM {vm['name']} GPU temps: {temps}")
                         if temps:
                             vm_gpu_temps.extend(temps)
+                        else:
+                            gpu_source_errors.append(
+                                vm_error or f"VM {vm['name']} GPU temperature unavailable"
+                            )
                         vm_state = state[host['name']]['vms'][vm['name']]
                         vm_state['gpu_temps'] = list(temps or [])
                         vm_state['sensor_status'] = 'ok' if temps else 'error'
-                        vm_state['last_error'] = None if temps else 'GPU temperature unavailable'
+                        vm_state['last_error'] = None if temps else (vm_error or 'GPU temperature unavailable')
                         vm_state['last_updated'] = datetime.datetime.now().astimezone().isoformat()
 
                 all_gpu_temps = list(gpu_temps) if gpu_temps else []
                 all_gpu_temps.extend(vm_gpu_temps)
 
                 decision = determine_control_temperature(
-                    SensorSnapshot(cpu_temps=cpu_temps, gpu_temps=all_gpu_temps),
+                    SensorSnapshot(
+                        cpu_temps=cpu_temps,
+                        gpu_temps=all_gpu_temps,
+                        gpu_sources_healthy=not gpu_source_errors,
+                    ),
                     mode=config.general.get('temperature_control_mode', 'max'),
                 )
 
                 if decision.fail_safe:
-                    log("ERROR", host['name'], "Host CPU temperature data error, fans running at full speed", file=sys.stderr)
+                    log("ERROR", host['name'], "Required temperature data unavailable, fans running at full speed", file=sys.stderr)
                 else:
                     log("INFO", host['name'], f"Host CPU avg temperature: {decision.cpu_avg:.2f}°C")
                     log("INFO", host['name'], f"Host CPU max temperature: {decision.cpu_max:.2f}°C")
@@ -127,7 +139,12 @@ def run_controller(config, controller, monitor):
                 host_state['gpu_temps'] = list(all_gpu_temps or [])
                 host_state['control_temperature'] = control_temperature
                 host_state['sensor_status'] = 'error' if decision.fail_safe else 'ok'
-                host_state['last_error'] = 'CPU temperature unavailable' if decision.fail_safe else None
+                if not cpu_temps:
+                    host_state['last_error'] = 'CPU temperature unavailable'
+                elif gpu_source_errors:
+                    host_state['last_error'] = '; '.join(gpu_source_errors)
+                else:
+                    host_state['last_error'] = None
 
                 host_state['temps'].append({
                     'temp_avg': temp_avg,

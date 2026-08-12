@@ -2,7 +2,7 @@
 
 # Dell iDRAC 風扇控制器（支援 GPU）
 
-> 一套以溫度為基準的 Dell PowerEdge 伺服器風扇自動控制腳本（已在 R730 測試，應適用多數 PowerEdge 機型），支援本機與遠端主機。
+> 一套以溫度為基準的 Dell PowerEdge 伺服器風扇自動控制腳本。專案過去曾回報於 R730 使用，但每種機型、iDRAC 韌體、GPU 與部署組合都必須個別驗證；請參閱 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
 這個分支面向在 Dell PowerEdge、homelab 或 Proxmox 環境部署本地 AI 與其他 GPU 工作負載的使用者。它整合 CPU、NVIDIA/AMD GPU 與 VM 溫度，協助維護者觀察散熱狀態，並在原廠策略不適合非標準加速卡時使用可預期的風扇曲線。
 
@@ -65,7 +65,7 @@ cd dell-idrac-fan-controller-gpu
 sudo ./install.sh [<安裝路徑>]
 ```
 
-預設安裝路徑為 `/opt/fan_control`，服務名稱為 `fan-control.service`。若已有設定檔，會自動備份為 `.old`。
+預設安裝路徑為 `/opt/fan_control`，服務名稱為 `fan-control.service`。既有的 `fan_control_config.yaml` 會原樣保留；編輯或升級前請自行備份。
 
 ### Docker 部署
 
@@ -75,8 +75,15 @@ sudo ./install.sh [<安裝路徑>]
 git clone https://github.com/kuan909608/dell-idrac-fan-controller-gpu.git
 cd dell-idrac-fan-controller-gpu
 docker build -t fan_control .
-docker run -d --restart=always --name fan_control -v "./fan_control_config.yaml:/app/fan_control_config.yaml:ro" -v "./keys:/app/keys:ro" -v "$HOME/.ssh/known_hosts:/root/.ssh/known_hosts:ro" fan_control
+docker run -d --restart=always --name fan_control \
+  -p 127.0.0.1:8080:8080 \
+  -v "./fan_control_config.yaml:/app/fan_control_config.yaml:ro" \
+  -v "./keys:/app/keys:ro" \
+  -v "$HOME/.ssh/known_hosts:/root/.ssh/known_hosts:ro" \
+  fan_control
 ```
+
+若要在 Docker 使用 Web 監控，容器內設定需使用 `general.web_host: 0.0.0.0`。上述 `-p 127.0.0.1:8080:8080` 仍只允許 Docker 主機本機存取；遠端查看請使用文件中的 SSH tunnel。
 
 建議於正式環境搭配 Orchestrator 使用。
 

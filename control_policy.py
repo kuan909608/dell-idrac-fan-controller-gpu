@@ -9,6 +9,7 @@ FAIL_SAFE_TEMPERATURE = 999.0
 class SensorSnapshot:
     cpu_temps: Optional[Sequence[float]]
     gpu_temps: Optional[Sequence[float]]
+    gpu_sources_healthy: bool = True
 
 
 @dataclass(frozen=True)
@@ -30,10 +31,10 @@ def _average(values: Sequence[float]) -> float:
 def determine_control_temperature(snapshot: SensorSnapshot, mode: str) -> ControlDecision:
     """Return the temperature used by fan control without performing any I/O.
 
-    CPU sensor loss is treated as unsafe because every configured host is
-    expected to provide CPU temperature data. GPU data remains optional.
+    CPU sensor loss is unsafe. GPU data is optional only when no GPU source is
+    configured; a failed configured GPU source is also unsafe.
     """
-    if not snapshot.cpu_temps:
+    if not snapshot.cpu_temps or not snapshot.gpu_sources_healthy:
         return ControlDecision(
             control_temperature=FAIL_SAFE_TEMPERATURE,
             fail_safe=True,

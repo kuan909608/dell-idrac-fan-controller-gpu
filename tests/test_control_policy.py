@@ -20,6 +20,16 @@ class DetermineControlTemperatureTests(unittest.TestCase):
         self.assertEqual(result.control_temperature, 999.0)
         self.assertTrue(result.fail_safe)
 
+    def test_failed_configured_gpu_source_activates_fail_safe(self):
+        snapshot = SensorSnapshot(
+            cpu_temps=[45.0], gpu_temps=[], gpu_sources_healthy=False
+        )
+
+        result = determine_control_temperature(snapshot, mode="max")
+
+        self.assertEqual(result.control_temperature, 999.0)
+        self.assertTrue(result.fail_safe)
+
 
 if __name__ == "__main__":
     unittest.main()

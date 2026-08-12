@@ -2,7 +2,7 @@
 
 # Dell iDRAC Fan Controller with GPU Support
 
-> A temperature-based fan speed controller for Dell PowerEdge servers (tested on an R730, should work with most PowerEdges). Supports both local and remote hosts.
+> A temperature-based fan speed controller for Dell PowerEdge servers. The project was historically reported on an R730, but every model, iDRAC firmware, GPU, and deployment combination requires independent verification; see [COMPATIBILITY.md](COMPATIBILITY.md).
 
 This fork is designed for homelab and Proxmox users running local AI or other GPU workloads on Dell PowerEdge hardware. It combines CPU, NVIDIA/AMD GPU, and VM temperature signals so operators can observe thermal health and apply predictable fan curves when vendor defaults are unsuitable for nonstandard accelerators.
 
@@ -64,7 +64,7 @@ cd dell-idrac-fan-controller-gpu
 sudo ./install.sh [<installation path>]
 ```
 
-The default installation path is `/opt/fan_control` and the service will be installed as `fan-control.service`. If a configuration file already exists, it will be renamed with a `.old` extension.
+The default installation path is `/opt/fan_control` and the service will be installed as `fan-control.service`. An existing `fan_control_config.yaml` is preserved unchanged; back it up before editing or upgrading.
 
 ### Docker
 
@@ -74,8 +74,15 @@ To deploy remote fan management with Docker (`fan_control` running on a separate
 git clone https://github.com/kuan909608/dell-idrac-fan-controller-gpu.git
 cd dell-idrac-fan-controller-gpu
 docker build -t fan_control .
-docker run -d --restart=always --name fan_control -v "./fan_control_config.yaml:/app/fan_control_config.yaml:ro" -v "./keys:/app/keys:ro" -v "$HOME/.ssh/known_hosts:/root/.ssh/known_hosts:ro" fan_control
+docker run -d --restart=always --name fan_control \
+  -p 127.0.0.1:8080:8080 \
+  -v "./fan_control_config.yaml:/app/fan_control_config.yaml:ro" \
+  -v "./keys:/app/keys:ro" \
+  -v "$HOME/.ssh/known_hosts:/root/.ssh/known_hosts:ro" \
+  fan_control
 ```
+
+For Docker Web monitoring, set `general.web_host: 0.0.0.0` inside the container. The `-p 127.0.0.1:8080:8080` mapping above still restricts access to the Docker host; use the documented SSH tunnel for remote viewing.
 
 Running this tool under a proper orchestrator is advised.
 

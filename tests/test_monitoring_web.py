@@ -37,6 +37,20 @@ class MonitoringWebTests(unittest.TestCase):
         self.assertNotIn("must-not-leak", encoded)
         self.assertNotIn("ipmi_credentials", encoded)
 
+    def test_status_snapshot_replaces_raw_remote_errors(self):
+        runtime_state = {
+            "node-a": {
+                "sensor_status": "error",
+                "last_error": "Authentication failed for password=must-not-leak",
+                "vms": {},
+            }
+        }
+
+        encoded = json.dumps(build_status_snapshot(runtime_state))
+
+        self.assertIn("SSH authentication failed", encoded)
+        self.assertNotIn("must-not-leak", encoded)
+
     def test_status_snapshot_marks_old_sensor_data_as_stale(self):
         runtime_state = {
             "node-a": {
@@ -60,10 +74,27 @@ class MonitoringWebTests(unittest.TestCase):
             self.assertEqual(response.status, 200)
             self.assertEqual(json.load(response)["hosts"], [])
 
-        request = Request(f"http://{host}:{port}/api/status", method="POST", data=b"{}")
-        with self.assertRaises(HTTPError) as error:
-            urlopen(request, timeout=2)
-        self.assertEqual(error.exception.code, 405)
+        for method in ("POST", "PUT", "PATCH", "DELETE"):
+            request = Request(
+                f"http://{host}:{port}/api/status", method=method, data=b"{}"
+            )
+            with self.subTest(method=method), self.assertRaises(HTTPError) as error:
+                urlopen(request, timeout=2)
+            self.assertEqual(error.exception.code, 405)
+
+    def test_dashboard_renders_vm_status_update_time_and_error(self):
+        server = MonitoringServer({}, WebSettings(host="127.0.0.1", port=0))
+        server.start()
+        self.addCleanup(server.stop)
+        host, port = server.address
+
+        with urlopen(f"http://{host}:{port}/", timeout=2) as response:
+            dashboard = response.read().decode("utf-8")
+
+        self.assertIn("vm.sensor_status", dashboard)
+        self.assertIn("timestamp(vm.last_updated)", dashboard)
+        self.assertIn("vm.last_error", dashboard)
+        self.assertNotIn(".innerHTML", dashboard)
 
 
 if __name__ == "__main__":

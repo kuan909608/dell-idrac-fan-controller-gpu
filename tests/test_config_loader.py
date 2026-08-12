@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import math
 from pathlib import Path
 
 import yaml
@@ -43,6 +44,22 @@ class ConfigLoaderTests(unittest.TestCase):
 
         with self.assertRaises(ConfigError):
             load_config({"hosts": [host]})
+
+    def test_rejects_non_finite_thresholds(self):
+        host = base_host()
+        host["temperatures"] = [40, math.nan]
+
+        with self.assertRaises(ConfigError):
+            load_config({"hosts": [host]})
+
+    def test_rejects_empty_sensor_command(self):
+        with self.assertRaises(ConfigError):
+            load_config(
+                {
+                    "general": {"cpu_temperature_command": "  "},
+                    "hosts": [base_host()],
+                }
+            )
 
     def test_ssh_private_key_does_not_require_a_password(self):
         host = base_host()

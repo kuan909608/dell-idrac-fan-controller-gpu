@@ -11,6 +11,7 @@ from typing import Mapping
 class WebSettings:
     host: str = "127.0.0.1"
     port: int = 8080
+    stale_after_seconds: float = 180
 
 
 def _is_stale(last_updated, now, stale_after_seconds):
@@ -25,6 +26,21 @@ def _is_stale(last_updated, now, stale_after_seconds):
         return True
 
 
+def _public_error(error):
+    if not error:
+        return None
+    normalized = str(error).lower()
+    if "authentication failed" in normalized:
+        return "SSH authentication failed"
+    if "host key" in normalized:
+        return "SSH host key verification failed"
+    if "timed out" in normalized or "timeout" in normalized:
+        return "Sensor connection timed out"
+    if "no output" in normalized:
+        return "Sensor command returned no output"
+    return "Sensor read failed"
+
+
 def _public_device(name, device, now, stale_after_seconds):
     status = device.get("sensor_status", "unknown")
     if status == "ok" and _is_stale(device.get("last_updated"), now, stale_after_seconds):
@@ -37,7 +53,7 @@ def _public_device(name, device, now, stale_after_seconds):
         "gpu_temps": list(device.get("gpu_temps") or []),
         "control_temperature": device.get("control_temperature"),
         "sensor_status": status,
-        "last_error": device.get("last_error"),
+        "last_error": _public_error(device.get("last_error")),
         "last_updated": device.get("last_updated"),
         "vms": [
             _public_device(vm_name, vm_state, now, stale_after_seconds)
@@ -77,6 +93,8 @@ DASHBOARD_HTML = """<!doctype html>
     .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; }
     .metric { border-left:2px solid var(--line); padding-left:8px; } .metric b { display:block; font-size:18px; }
     .vms { margin-top:12px; padding-top:10px; border-top:1px dashed var(--line); }
+    .vm { margin-top:8px; padding-left:8px; border-left:2px solid var(--line); }
+    .vm-head { display:flex; justify-content:space-between; gap:12px; }
     footer { margin-top:18px; color:var(--dim); }
   </style>
 </head>
@@ -92,6 +110,13 @@ const el = (tag, text, cls) => { const node=document.createElement(tag); if(text
 const metric = (label, value) => { const box=el('div',undefined,'metric'); box.append(el('span',label,'dim'),el('b',value)); return box; };
 const temperatures = values => values && values.length ? values.map(v => `${Number(v).toFixed(1)}°C`).join('  ') : '--';
 const timestamp = value => value ? value.slice(0,19).replace('T',' ') : '--';
+function vmRow(vm) {
+  const row=el('div',undefined,'vm'); const head=el('div',undefined,'vm-head');
+  head.append(el('span',`${vm.name}: ${temperatures(vm.gpu_temps)}`),el('span',String(vm.sensor_status||'unknown').toUpperCase(),`status-${vm.sensor_status||'stale'}`));
+  row.append(head,el('div',`UPDATED ${timestamp(vm.last_updated)}`,'dim'));
+  if(vm.last_error) row.append(el('div',`! ${vm.last_error}`,'status-error'));
+  return row;
+}
 function hostCard(host) {
   const card=el('article',undefined,'host'); const head=el('div',undefined,'host-head');
   head.append(el('strong',`[${host.name}]`),el('span',String(host.sensor_status||'unknown').toUpperCase(),`status-${host.sensor_status||'stale'}`));
@@ -99,7 +124,7 @@ function hostCard(host) {
   grid.append(metric('CPU',temperatures(host.cpu_temps)),metric('GPU',temperatures(host.gpu_temps)),metric('CONTROL',host.control_temperature==null?'--':`${Number(host.control_temperature).toFixed(1)}°C`),metric('FAN',`${host.fan_speed??'--'}% / ${host.fan_control_mode??'--'}`),metric('UPDATED',timestamp(host.last_updated)));
   card.append(head,grid);
   if(host.last_error) card.append(el('div',`! ${host.last_error}`,'status-error'));
-  if(host.vms && host.vms.length) { const vms=el('div',undefined,'vms'); vms.append(el('div','VM GPU SOURCES','dim')); host.vms.forEach(vm=>vms.append(el('div',`${vm.name}: ${temperatures(vm.gpu_temps)}`))); card.append(vms); }
+  if(host.vms && host.vms.length) { const vms=el('div',undefined,'vms'); vms.append(el('div','VM GPU SOURCES','dim')); host.vms.forEach(vm=>vms.append(vmRow(vm))); card.append(vms); }
   return card;
 }
 async function refresh() {
@@ -125,7 +150,11 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/api/status":
-            payload = json.dumps(build_status_snapshot(self.runtime_state)).encode("utf-8")
+            payload = json.dumps(
+                build_status_snapshot(
+                    self.runtime_state, stale_after_seconds=self.stale_after_seconds
+                )
+            ).encode("utf-8")
             self._headers(200, "application/json; charset=utf-8", len(payload))
             self.wfile.write(payload)
         elif self.path == "/":
@@ -163,7 +192,14 @@ class _MonitoringHTTPServer(ThreadingHTTPServer):
 
 class MonitoringServer:
     def __init__(self, runtime_state, settings=WebSettings()):
-        handler = type("RuntimeStatusHandler", (_Handler,), {"runtime_state": runtime_state})
+        handler = type(
+            "RuntimeStatusHandler",
+            (_Handler,),
+            {
+                "runtime_state": runtime_state,
+                "stale_after_seconds": settings.stale_after_seconds,
+            },
+        )
         self._server = _MonitoringHTTPServer((settings.host, settings.port), handler)
         self._thread = threading.Thread(target=self._server.serve_forever, name="monitoring-web", daemon=True)
 

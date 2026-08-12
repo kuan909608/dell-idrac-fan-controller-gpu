@@ -1,5 +1,5 @@
 import os
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from state import state
 from utils import log, run_command
 
@@ -30,12 +30,15 @@ class TempMonitor:
             return None
         return temps if temps else None
 
-    def get_gpu_temps(self, host: dict, vm_name: Optional[str] = None) -> Optional[List[float]]:
+    def get_gpu_temps(
+        self, host: dict, vm_name: Optional[str] = None
+    ) -> Tuple[Optional[List[float]], Optional[str]]:
         if vm_name is not None:
             device = next((v for v in host.get('vms', []) if v['name'] == vm_name), None)
             if not device:
-                log("WARN", host['name'], f"VM ({vm_name}) not found in host {host['name']}.")
-                return None
+                error = f"VM ({vm_name}) not found in host {host['name']}."
+                log("WARN", host['name'], error)
+                return None, error
         else:
             device = host
 
@@ -43,7 +46,7 @@ class TempMonitor:
         name = device.get('name', '')
         gpu_type = device.get('gpu_type')
         if not gpu_type or (isinstance(gpu_type, list) and len(gpu_type) == 0):
-            return None
+            return None, None
         if isinstance(gpu_type, list):
             gpu_types = [str(gt).lower() for gt in gpu_type]
         elif isinstance(gpu_type, str):
@@ -58,14 +61,18 @@ class TempMonitor:
             cmds.append(self.config.general['gpu_temperature_command_amd'])
 
         if not cmds:
-            log("WARN", name, f"Device {name} has invalid GPU type: {gpu_type}")
-            return None
+            error = f"Device {name} has invalid GPU type: {gpu_type}"
+            log("WARN", name, error)
+            return None, error
 
         temps = []
+        errors = []
         for ssh_command in cmds:
             output, error = run_command(device, ssh_command, logger=log, log_tag=name, debug=debug)
             if error or not output or not isinstance(output, str) or not output.strip():
-                log("ERROR", name, f"Error getting GPU temps from Device {name}: {error if error else 'No output'}")
+                detail = str(error).strip() if error else 'No output'
+                errors.append(detail)
+                log("ERROR", name, f"Error getting GPU temps from Device {name}: {detail}")
                 continue
             for n in output.strip().split(';'):
                 try:
@@ -73,4 +80,6 @@ class TempMonitor:
                 except ValueError:
                     log("WARN", name, f"Warning: The GPU temperature response is not a numeric value: {n}")
                     continue
-        return temps if temps else None
+        if temps:
+            return temps, None
+        return None, '; '.join(errors) if errors else 'GPU temperature unavailable'

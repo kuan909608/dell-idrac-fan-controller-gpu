@@ -31,6 +31,20 @@ class PackagingContractTests(unittest.TestCase):
         for pattern in ["fan_control_config.yaml", "keys/", ".git/", ".env", "venv/"]:
             self.assertIn(pattern, dockerignore)
 
+    def test_systemd_unit_applies_root_service_hardening(self):
+        service = (ROOT / "fan-control.service").read_text(encoding="utf-8")
+
+        for directive in [
+            "NoNewPrivileges=true",
+            "ProtectSystem=strict",
+            "ProtectKernelTunables=true",
+            "ProtectKernelModules=true",
+            "ProtectControlGroups=true",
+            "RestrictSUIDSGID=true",
+            "LockPersonality=true",
+        ]:
+            self.assertIn(directive, service)
+
 
 if __name__ == "__main__":
     unittest.main()
