@@ -4,6 +4,12 @@ All notable user-facing changes to this project are documented here. The project
 
 ## [Unreleased]
 
+## [1.1.0-rc.1] - 2026-08-12
+
+### Added
+
+- One-command host installation through a small HTTPS bootstrap that downloads a selected repository ref and delegates to the existing systemd installer.
+
 ## [1.0.0] - 2026-08-12
 
 ### Added

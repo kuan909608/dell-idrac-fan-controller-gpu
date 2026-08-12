@@ -23,7 +23,7 @@ jobs:
       - run: python -m unittest discover -s tests -v
       - run: python -m compileall -q .
       - run: python -m ruff check .
-      - run: bash -n install.sh
+      - run: bash -n install.sh install-online.sh
       - name: Verify rendered systemd unit
         run: |
           install_root="$RUNNER_TEMP/fan_control"
