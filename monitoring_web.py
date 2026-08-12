@@ -109,7 +109,11 @@ const connection = document.querySelector('#connection');
 const el = (tag, text, cls) => { const node=document.createElement(tag); if(text!==undefined) node.textContent=text; if(cls) node.className=cls; return node; };
 const metric = (label, value) => { const box=el('div',undefined,'metric'); box.append(el('span',label,'dim'),el('b',value)); return box; };
 const temperatures = values => values && values.length ? values.map(v => `${Number(v).toFixed(1)}°C`).join('  ') : '--';
-const timestamp = value => value ? value.slice(0,19).replace('T',' ') : '--';
+const timestamp = value => {
+  if (!value) return '--';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '--' : date.toLocaleString(undefined,{hour12:false});
+};
 function vmRow(vm) {
   const row=el('div',undefined,'vm'); const head=el('div',undefined,'vm-head');
   head.append(el('span',`${vm.name}: ${temperatures(vm.gpu_temps)}`),el('span',String(vm.sensor_status||'unknown').toUpperCase(),`status-${vm.sensor_status||'stale'}`));

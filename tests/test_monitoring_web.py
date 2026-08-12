@@ -93,6 +93,8 @@ class MonitoringWebTests(unittest.TestCase):
 
         self.assertIn("vm.sensor_status", dashboard)
         self.assertIn("timestamp(vm.last_updated)", dashboard)
+        self.assertIn("new Date(value)", dashboard)
+        self.assertIn("date.toLocaleString", dashboard)
         self.assertIn("vm.last_error", dashboard)
         self.assertNotIn(".innerHTML", dashboard)
 
