@@ -38,6 +38,23 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("ENV FAN_CONTROL_CONFIG=/config/fan_control_config.yaml", dockerfile)
         self.assertIn('-v "./config:/config:ro"', readme)
 
+    def test_docker_image_copies_only_runtime_files(self):
+        dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+
+        self.assertNotIn("COPY . .", dockerfile)
+        for filename in [
+            "main.py",
+            "config_loader.py",
+            "control_policy.py",
+            "fan_controller.py",
+            "lifecycle.py",
+            "monitoring_web.py",
+            "state.py",
+            "temp_monitor.py",
+            "utils.py",
+        ]:
+            self.assertIn(filename, dockerfile)
+
     def test_compose_uses_safe_controller_lifecycle_and_mounts(self):
         compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
 

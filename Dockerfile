@@ -22,8 +22,9 @@ ENV FAN_CONTROL_CONFIG=/config/fan_control_config.yaml
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy all project files
-COPY . .
+# Copy only the files required by the controller at runtime.
+COPY main.py config_loader.py control_policy.py fan_controller.py lifecycle.py ./
+COPY monitoring_web.py state.py temp_monitor.py utils.py ./
 
 # Default command to run main program
 CMD ["python", "./main.py"]
