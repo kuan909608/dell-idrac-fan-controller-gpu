@@ -60,10 +60,10 @@ Sensor command 是由管理者提供的 shell pipeline，輸出必須是以分�
 控制器需直接讀取伺服器本機 sensor 時，建議使用此方式。如需在主機上一行完成安裝，請執行：
 
 ```bash
-bash -c "$(curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/kuan909608/dell-idrac-fan-controller-gpu/v1.1.0-rc.2/install-online.sh)"
+bash -c "$(curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/kuan909608/dell-idrac-fan-controller-gpu/v1.1.0-rc.3/install-online.sh)"
 ```
 
-Bootstrap 與下載的原始碼封存都固定為 `v1.1.0-rc.2`。以 root 執行網路下載的腳本前，應先檢查腳本內容。這是供 `v1.1.0` 正式發布前驗證使用的預發佈安裝器。
+Bootstrap 與下載的原始碼封存都固定為 `v1.1.0-rc.3`。以 root 執行網路下載的腳本前，應先檢查腳本內容。這是供 `v1.1.0` 正式發布前驗證使用的預發佈安裝器。
 
 或者從 repository checkout 安裝：
 
@@ -83,6 +83,14 @@ sudo journalctl -u fan-control -f
 sudo systemctl restart fan-control
 sudo systemctl stop fan-control
 ```
+
+如需以相同的版本固定 bootstrap 解除 systemd 安裝，請執行：
+
+```bash
+bash -c "$(curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/kuan909608/dell-idrac-fan-controller-gpu/v1.1.0-rc.3/uninstall-online.sh)"
+```
+
+解除安裝器會先停止服務，讓正常的自動風扇模式恢復流程執行。若服務無法停止，腳本會中止且不移除檔案。之後會停用並移除 systemd unit 與 `/opt/fan_control`，但保留共用的作業系統套件。
 
 ## 使用 Docker 安裝
 

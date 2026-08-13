@@ -23,7 +23,7 @@ The proposed first formal release is `v1.0.0`: the current feature set is substa
    python3 -m unittest discover -s tests -v
    python3 -m compileall -q .
    python3 -m ruff check .
-   bash -n install.sh
+   bash -n install.sh install-online.sh uninstall.sh uninstall-online.sh
    docker compose config
    ```
 

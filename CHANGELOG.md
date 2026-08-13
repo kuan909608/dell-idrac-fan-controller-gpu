@@ -4,6 +4,17 @@ All notable user-facing changes to this project are documented here. The project
 
 ## [Unreleased]
 
+## [1.1.0-rc.3] - 2026-08-13
+
+### Added
+
+- Version-pinned one-command systemd uninstallation that stops the controller for automatic-mode recovery before removing its service unit and installation directory.
+
+### Changed
+
+- Mark systemd-owned installation directories so the uninstaller refuses to remove unrelated directories under `/opt`.
+- Update the prerelease install bootstrap and documentation to `v1.1.0-rc.3` for paired installation and uninstallation staging.
+
 ## [1.1.0-rc.2] - 2026-08-12
 
 ### Changed

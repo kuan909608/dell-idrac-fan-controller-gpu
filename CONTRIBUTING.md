@@ -19,7 +19,7 @@ python3 -m venv .venv
 .venv/bin/python -m unittest discover -s tests -v
 .venv/bin/python -m compileall -q .
 .venv/bin/python -m ruff check .
-bash -n install.sh
+bash -n install.sh install-online.sh uninstall.sh uninstall-online.sh
 ```
 
 CI runs the same Python checks on 3.11 and 3.13. If deployment files change, also validate the relevant environment where available:

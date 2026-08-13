@@ -61,6 +61,7 @@ install -m 0644 "$SOURCE_DIR/fan_control_config.yaml.example" "$TARGETDIR/fan_co
 if [ ! -f "$TARGETDIR/fan_control_config.yaml" ]; then
     install -m 0600 "$SOURCE_DIR/fan_control_config.yaml.example" "$TARGETDIR/fan_control_config.yaml"
 fi
+touch "$TARGETDIR/.fan-control-installation"
 
 echo "*** Creating, (re)starting and enabling SystemD service..."
 unit_tmp="$(mktemp)"

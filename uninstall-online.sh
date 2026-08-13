@@ -33,9 +33,9 @@ curl \
 
 tar --extract --gzip --file "$archive" --directory "$source_dir" --strip-components=1
 
-if [ ! -x "$source_dir/install.sh" ] || [ ! -f "$source_dir/requirements.txt" ]; then
-    echo "Downloaded source archive does not contain the expected installer files."
+if [ ! -x "$source_dir/uninstall.sh" ]; then
+    echo "Downloaded source archive does not contain the expected uninstaller."
     exit 1
 fi
 
-bash "$source_dir/install.sh" "$TARGETDIR"
+bash "$source_dir/uninstall.sh" "$TARGETDIR"
