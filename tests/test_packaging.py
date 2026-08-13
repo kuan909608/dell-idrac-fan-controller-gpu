@@ -71,7 +71,7 @@ class PackagingContractTests(unittest.TestCase):
     def test_online_installer_only_bootstraps_the_repository_installer(self):
         bootstrap = (ROOT / "install-online.sh").read_text(encoding="utf-8")
 
-        self.assertIn('readonly VERSION="v1.1.0-rc.3"', bootstrap)
+        self.assertIn('readonly VERSION="v1.1.0"', bootstrap)
         self.assertIn(
             "https://github.com/$REPOSITORY/archive/$VERSION.tar.gz", bootstrap
         )
@@ -103,7 +103,7 @@ class PackagingContractTests(unittest.TestCase):
     def test_online_uninstaller_only_bootstraps_the_repository_uninstaller(self):
         bootstrap = (ROOT / "uninstall-online.sh").read_text(encoding="utf-8")
 
-        self.assertIn('readonly VERSION="v1.1.0-rc.3"', bootstrap)
+        self.assertIn('readonly VERSION="v1.1.0"', bootstrap)
         self.assertIn(
             "https://github.com/$REPOSITORY/archive/$VERSION.tar.gz", bootstrap
         )

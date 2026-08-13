@@ -8,7 +8,7 @@ Releases follow Semantic Versioning and are created only by a maintainer after r
 - **MINOR**: backward-compatible capability or meaningful new sensor/deployment support.
 - **PATCH**: backward-compatible bug, security, packaging, or documentation correction.
 
-The proposed first formal release is `v1.0.0`: the current feature set is substantial and used as an integrated controller, while a 1.0 baseline communicates that future incompatible changes will require a major version.
+The project has a stable 1.x baseline. Future incompatible changes require a major version.
 
 ## Maintainer checklist
 

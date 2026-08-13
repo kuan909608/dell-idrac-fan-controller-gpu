@@ -60,10 +60,10 @@ Sensor commands are administrator-provided shell pipelines and must return semic
 Use this mode when the controller runs on the server whose local sensors it reads. For a one-command installation on the host, run:
 
 ```bash
-bash -c "$(curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/kuan909608/dell-idrac-fan-controller-gpu/v1.1.0-rc.3/install-online.sh)"
+bash -c "$(curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/kuan909608/dell-idrac-fan-controller-gpu/v1.1.0/install-online.sh)"
 ```
 
-The bootstrap and downloaded source archive are both pinned to `v1.1.0-rc.3`. Review scripts downloaded from the internet before running them as root. This is a prerelease installer intended for validation before `v1.1.0`.
+The bootstrap and downloaded source archive are both pinned to `v1.1.0`. Review scripts downloaded from the internet before running them as root.
 
 Alternatively, install from a repository checkout:
 
@@ -87,10 +87,10 @@ sudo systemctl stop fan-control
 To uninstall the systemd deployment with the same version-pinned bootstrap, run:
 
 ```bash
-bash -c "$(curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/kuan909608/dell-idrac-fan-controller-gpu/v1.1.0-rc.3/uninstall-online.sh)"
+bash -c "$(curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/kuan909608/dell-idrac-fan-controller-gpu/v1.1.0/uninstall-online.sh)"
 ```
 
-The uninstaller stops the service first so normal automatic-mode recovery can run. If the service cannot stop, it aborts without removing files. It then disables and removes the systemd unit and `/opt/fan_control`. Shared operating-system packages are left installed.
+The uninstaller stops the service first so normal automatic-mode recovery can run. If the service cannot stop, it aborts without removing files. It refuses directories without the installer's ownership marker, then disables and removes the systemd unit and `/opt/fan_control`. Shared operating-system packages are left installed.
 
 ## Install with Docker
 

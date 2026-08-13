@@ -4,6 +4,17 @@ All notable user-facing changes to this project are documented here. The project
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-13
+
+### Added
+
+- Version-pinned one-command systemd installation and safe uninstallation for direct-host deployments.
+
+### Changed
+
+- Pin the formal online install and uninstall bootstraps and their downloaded source archives to `v1.1.0`.
+- Document Debian 13 / Proxmox VE 9 staging evidence while retaining the project's hardware-verification limits.
+
 ## [1.1.0-rc.3] - 2026-08-13
 
 ### Added

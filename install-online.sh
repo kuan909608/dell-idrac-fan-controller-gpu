@@ -3,7 +3,7 @@
 set -euo pipefail
 
 readonly REPOSITORY="kuan909608/dell-idrac-fan-controller-gpu"
-readonly VERSION="v1.1.0-rc.3"
+readonly VERSION="v1.1.0"
 readonly TARGETDIR="${1:-/opt/fan_control}"
 
 for command_name in curl tar; do
