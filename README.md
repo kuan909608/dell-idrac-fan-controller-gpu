@@ -14,6 +14,12 @@ The controller supports CPU sensors, NVIDIA and AMD GPU sensors, VM GPU polling 
 > [!CAUTION]
 > This software sends raw IPMI commands that change physical cooling and may run as root. It cannot guarantee hardware safety or compatibility. Validate it on your exact server, iDRAC firmware, GPUs, sensor commands, and sustained workload. Keep independent thermal alerts and out-of-band access available.
 
+## Dashboard preview
+
+![Read-only iDRAC thermal monitoring dashboard showing CPU, GPU, control temperature, fan state, and VM GPU sources](docs/images/thermal-console-dashboard.jpg)
+
+The dashboard is read-only and the screenshot uses non-identifying test host and VM names.
+
 ## Use cases
 
 - A Proxmox VE host with one or more GPUs passed through to AI or compute VMs.

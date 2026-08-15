@@ -14,6 +14,12 @@
 > [!CAUTION]
 > 本軟體會傳送 raw IPMI 指令改變實體散熱狀態，並可能以 root 執行。它無法保證硬體安全或相容性。請在實際伺服器、iDRAC 韌體、GPU、sensor command 與持續負載上驗證，並保留獨立溫度告警及帶外管理能力。
 
+## Dashboard 預覽
+
+![唯讀 iDRAC 溫度監控 dashboard，顯示 CPU、GPU、控制溫度、風扇狀態與 VM GPU 來源](docs/images/thermal-console-dashboard.jpg)
+
+Dashboard 僅提供讀取功能；截圖使用不具識別性的測試主機與 VM 名稱。
+
 ## 使用情境
 
 - GPU passthrough 給 AI 或運算 VM 的 Proxmox VE 主機。
